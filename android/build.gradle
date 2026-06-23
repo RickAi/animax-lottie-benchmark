@@ -1,0 +1,146 @@
+buildscript {
+    ext {
+        kotlin_version = '1.5.32'
+        compileSdkVersion = 30
+        ndkVersion = '21.1.6352462'
+        abiList = project.hasProperty('abiList')
+                ? project.property('abiList').split(',').collect { it.trim() }.findAll { it }
+                : ['arm64-v8a']
+
+        animaxDir = file("../third_party/animax").canonicalFile
+        def animaxPython = new File(animaxDir, ".venv/bin/python3")
+        pythonExec = project.hasProperty('python_exec')
+                ? file(project.property('python_exec')).absolutePath
+                : (animaxPython.isFile() ? animaxPython.absolutePath : "python3")
+        lottieAndroidVersion = project.findProperty('LOTTIE_ANDROID_VERSION') ?: '6.7.1'
+    }
+
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:4.1.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath 'com.googlecode.json-simple:json-simple:1.1.1'
+    }
+}
+
+def dependencyVersionsFile = new File(rootProject.ext.animaxDir, "versions.properties")
+if (!dependencyVersionsFile.isFile()) {
+    throw new GradleException("Missing versions.properties in ${rootProject.ext.animaxDir}. Run scripts/bootstrap_deps.sh from the repository root.")
+}
+def dependencyVersions = new Properties()
+dependencyVersionsFile.withInputStream { dependencyVersions.load(it) }
+["LYNX_VERSION", "SKITY_VERSION", "TEXTRA_VERSION"].each { key ->
+    if (!dependencyVersions.getProperty(key)) {
+        throw new GradleException("Missing ${key} in ${dependencyVersionsFile}")
+    }
+}
+
+def animaxToolsDir = new File(rootProject.ext.animaxDir, "tools_shared")
+if (!animaxToolsDir.isDirectory()) {
+    throw new GradleException("Missing AnimaX generated tools in ${rootProject.ext.animaxDir}. Run scripts/bootstrap_deps.sh from the repository root.")
+}
+
+allprojects {
+    ext.LYNX_VERSION = dependencyVersions.getProperty("LYNX_VERSION")
+    ext.SKITY_VERSION = dependencyVersions.getProperty("SKITY_VERSION")
+    ext.TEXTRA_VERSION = dependencyVersions.getProperty("TEXTRA_VERSION")
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
+}
+
+ext.getCppLib = {
+    if (project.hasProperty('use_cpp_shared') && project.property('use_cpp_shared') == 'true') {
+        return 'c++_shared'
+    }
+    if (project.hasProperty('use_cpp_static') && project.property('use_cpp_static') == 'true') {
+        return 'c++_static'
+    }
+    return 'c++_static'
+}
+
+ext.getFlavorNamesAndBuildTypes = { Project project ->
+    def flavorNames = []
+    def buildTypes = []
+    project.android.productFlavors.all { flavor -> flavorNames << flavor.name }
+    project.android.buildTypes.all { buildType -> buildTypes << buildType.name }
+
+    def runTasks = gradle.startParameter.taskNames.toString().toLowerCase()
+    if (runTasks == "[]" && gradle.parent != null) {
+        runTasks = gradle.parent.startParameter.taskNames.toString().toLowerCase()
+    }
+    if (runTasks.contains("generateallgncmaketargets") || runTasks.contains("clean")) {
+        return [flavorNames, buildTypes]
+    }
+    if (!(runTasks.contains("release") || runTasks.contains("publish"))) {
+        buildTypes -= "release"
+    }
+    if (!runTasks.contains("debug")) {
+        buildTypes -= "debug"
+    }
+    return [flavorNames, buildTypes]
+}
+
+ext.writeGnArgs = { String gnArgs ->
+    def parsedGnArgs = new groovy.json.JsonSlurper().parseText(gnArgs)
+    parsedGnArgs.each { variantName, args ->
+        if (variantName.toString().toLowerCase().contains('debug') && args instanceof Map && args.containsKey('is_debug')) {
+            args['is_debug'] = 'false'
+        }
+    }
+    gnArgs = groovy.json.JsonOutput.toJson(parsedGnArgs)
+    exec {
+        workingDir rootProject.ext.animaxDir
+        commandLine rootProject.ext.pythonExec,
+                "tools_shared/android_tools/write_gn_args.py",
+                "--gn-args",
+                gnArgs.replaceAll('"', '#')
+    }
+}
+
+task generateAllGnCmakeTargets {
+    evaluationDependsOnChildren()
+    rootProject.allprojects { Project project ->
+        if (project.tasks.findByName('configGnCompileParas')) {
+            dependsOn project.configGnCompileParas
+        }
+    }
+    doLast {
+        exec {
+            workingDir rootProject.ext.animaxDir
+            commandLine rootProject.ext.pythonExec, "tools_shared/android_tools/generate_cmake_scripts_from_gn.py"
+        }
+    }
+}
+
+gradle.projectsEvaluated {
+    rootProject.allprojects { Project project ->
+        project.tasks.matching {
+            it.name.startsWith('generateJsonModel') || it.name.startsWith('externalNativeBuild')
+        }.all {
+            dependsOn rootProject.generateAllGnCmakeTargets
+        }
+    }
+}
+
+task clean(type: Delete) {
+    dependsOn generateAllGnCmakeTargets
+    dependsOn subprojects*.tasks*.matching { it.name.contains('clean') }
+    doLast {
+        exec {
+            workingDir rootProject.ext.animaxDir
+            commandLine rootProject.ext.pythonExec,
+                    "tools_shared/android_tools/generate_cmake_scripts_from_gn.py",
+                    "--clean"
+        }
+    }
+}

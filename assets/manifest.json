@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "description": "Local-only Lottie JSON cases for AnimaX vs Airbnb Lottie native benchmark.",
+  "cases": [
+    {
+      "id": "hamburger_arrow",
+      "file": "lotties/hamburger_arrow.json",
+      "category": "small",
+      "features": ["shape", "path_morph"],
+      "source": "airbnb/lottie-ios Tests/Samples/HamburgerArrow.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "lottie_logo_2",
+      "file": "lotties/lottie_logo_2.json",
+      "category": "complex",
+      "features": ["many_layers", "logo"],
+      "source": "airbnb/lottie-ios Tests/Samples/LottieLogo2.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "twitter_heart",
+      "file": "lotties/twitter_heart.json",
+      "category": "icon",
+      "features": ["shape", "burst"],
+      "source": "airbnb/lottie-ios Tests/Samples/TwitterHeart.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "pin_jump",
+      "file": "lotties/pin_jump.json",
+      "category": "character",
+      "features": ["shape", "transform"],
+      "source": "airbnb/lottie-ios Tests/Samples/PinJump.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "track_mattes",
+      "file": "lotties/track_mattes.json",
+      "category": "feature",
+      "features": ["track_matte"],
+      "source": "airbnb/lottie-android snapshot-tests/src/main/assets/Tests/TrackMattes.json",
+      "source_commit": "05ea92e90381eb8a8ae06855ea2b74f322bebbec",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "gradient_fill_blur",
+      "file": "lotties/gradient_fill_blur.json",
+      "category": "feature",
+      "features": ["gradient", "blur"],
+      "source": "airbnb/lottie-android snapshot-tests/src/main/assets/Tests/GradientFillBlur.json",
+      "source_commit": "05ea92e90381eb8a8ae06855ea2b74f322bebbec",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "base64_image",
+      "file": "lotties/base64_image.json",
+      "category": "image",
+      "features": ["embedded_image", "base64"],
+      "source": "airbnb/lottie-ios Tests/Samples/Nonanimating/base64Test.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "text_animated_properties",
+      "file": "lotties/text_animated_properties.json",
+      "category": "text",
+      "features": ["text", "animated_text_properties"],
+      "source": "airbnb/lottie-ios Tests/Samples/Nonanimating/Text_AnimatedProperties.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "shadow_effect_animated",
+      "file": "lotties/shadow_effect_animated.json",
+      "category": "effect",
+      "features": ["shadow", "effect"],
+      "source": "airbnb/lottie-ios Tests/Samples/Issues/issue_1169_shadow_effect_animated.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "motion_corpse",
+      "file": "lotties/motion_corpse.json",
+      "category": "large_canvas",
+      "features": ["large_canvas", "many_layers"],
+      "source": "airbnb/lottie-ios Tests/Samples/MotionCorpse_Jrcanest.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+.gradle/
+build/
+results/
+.bundle/
+
+android/.gradle/
+android/**/build/
+
+ios/**/build/
+ios/**/Pods/
+ios/**/Podfile.lock
+ios/**/*.xcworkspace/
+ios/AnimaXBenchmark/results_bundle*
+
+*.iml
+.DS_Store

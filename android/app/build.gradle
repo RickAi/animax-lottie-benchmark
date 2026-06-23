@@ -1,0 +1,65 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        applicationId "com.animax.benchmark"
+        minSdkVersion 23
+        targetSdkVersion 28
+        versionCode 1
+        versionName "0.1.0"
+
+        ndk {
+            abiFilters(*(rootProject.ext.abiList))
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+            minifyEnabled false
+        }
+        release {
+            debuggable false
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    flavorDimensions "lynx"
+    productFlavors {
+        asan {
+            dimension "lynx"
+            matchingFallbacks = ["asan"]
+        }
+        noasan {
+            dimension "lynx"
+            matchingFallbacks = ["noasan"]
+            getIsDefault().set(true)
+        }
+    }
+
+    packagingOptions {
+        exclude("META-INF/*.kotlin_module")
+        exclude("META-INF/aweme/source_info.json")
+        pickFirst '**/libc++_shared.so'
+        pickFirst '**/libskity.so'
+        pickFirst '**/liblynxtextra.so'
+    }
+
+    sourceSets {
+        main.assets.srcDirs += [file("../../assets")]
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation project(':AnimaXAndroid')
+    implementation project(':AnimaXTextra')
+    implementation "com.airbnb.android:lottie:${rootProject.ext.lottieAndroidVersion}"
+}

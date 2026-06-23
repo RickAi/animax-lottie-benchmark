@@ -1,0 +1,15 @@
+rootProject.name = "AnimaXLottieBenchmark"
+
+def animaxDir = new File(settingsDir, "../third_party/animax").canonicalFile
+
+if (!new File(animaxDir, "platform/android/animax_android").exists()) {
+    throw new GradleException("AnimaX submodule is missing. Run scripts/bootstrap_deps.sh from the repository root.")
+}
+
+include(":app")
+
+include(":AnimaXAndroid")
+project(":AnimaXAndroid").projectDir = new File(animaxDir, "platform/android/animax_android")
+
+include(":AnimaXTextra")
+project(":AnimaXTextra").projectDir = new File(animaxDir, "platform/android/animax_textra")

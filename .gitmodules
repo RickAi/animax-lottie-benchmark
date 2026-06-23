@@ -1,0 +1,3 @@
+[submodule "third_party/animax"]
+	path = third_party/animax
+	url = https://github.com/lynx-family/animax.git
