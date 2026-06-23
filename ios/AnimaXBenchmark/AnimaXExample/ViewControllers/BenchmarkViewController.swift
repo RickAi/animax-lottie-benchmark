@@ -1,377 +1,662 @@
 import Foundation
 import Lottie
-import os
 import UIKit
 
 @objc(BenchmarkViewController)
 final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
+  private enum Engine: String {
+    case animax
+    case lottie
+
+    var title: String {
+      switch self {
+      case .animax:
+        return "AnimaX"
+      case .lottie:
+        return "Lottie"
+      }
+    }
+  }
+
   private struct CaseSpec {
-    let id: String
     let file: String
-    let category: String
-    let features: [String]
   }
 
-  private final class CaseRun {
-    let engine: String
-    let spec: CaseSpec
-    let iteration: Int
-    var compositionReady = false
-    var firstFrameSeen = false
-    var error: String?
-
-    init(engine: String, spec: CaseSpec, iteration: Int) {
-      self.engine = engine
-      self.spec = spec
-      self.iteration = iteration
-    }
-
-    func asDictionary() -> [String: Any] {
-      var dictionary: [String: Any] = [
-        "engine": engine,
-        "caseId": spec.id,
-        "file": spec.file,
-        "category": spec.category,
-        "features": spec.features,
-        "iteration": iteration,
-        "status": status,
-        "compositionReady": compositionReady,
-        "firstFrameSeen": firstFrameSeen
-      ]
-      if let error {
-        dictionary["error"] = error
-      }
-      return dictionary
-    }
-
-    private var status: String {
-      if error != nil {
-        return "error"
-      }
-      return firstFrameSeen ? "launched" : "started"
-    }
+  private struct GridSpec {
+    let columns: Int
+    let rows: Int
+    let width: CGFloat
+    let height: CGFloat
+    let tileWidth: CGFloat
+    let tileHeight: CGFloat
   }
 
+  private static let counts = [1, 5, 10, 20, 40, 60]
+  private static let maxColumns = 4
+  private static let maxRows = 5
+  private static let minUniqueCases = maxColumns * maxRows
+  private static let animaxFpsIntervalMs = 1000
+
+  private let mainThreadFpsMonitor = MainThreadFpsMonitor()
   private let stage = UIView()
-  private let statusView = UITextView()
-  private let runButton = UIButton(type: .system)
-  private var cases: [CaseSpec] = []
-  private var caseRuns: [[String: Any]] = []
-  private var runId = ""
-  private var iterations = 3
-  private var caseDurationMs: UInt64 = 10_000
-  private var engineFilter = "all"
-  private var currentAnimaxView: AnimaXView?
-  private var currentCaseRun: CaseRun?
-  private var firstFrameSeen = false
+
+  private var caseSpecs: [CaseSpec] = []
+  private var animaxViews: [AnimaXView] = []
+  private var lottieViews: [LottieAnimationView] = []
+  private var animaxGpuFpsValues: [String: Double] = [:]
+
+  private var animaxButton: UIButton?
+  private var lottieButton: UIButton?
+  private var animaxMultiThreadButton: UIButton?
+  private var fpsLabel: UILabel?
+
+  private var selectedEngine: Engine = .animax
+  private var launchCount = 1
+  private var showingScene = false
+  private var currentSceneEngine: Engine = .animax
+  private var currentSceneCount = 1
+  private var animaxMultiThreadEnabled = false
+  private var mainThreadFps = 0.0
+  private var animaxGpuFps = 0.0
+  private var needsStagePopulation = false
+  private var lastStageSize = CGSize.zero
 
   override func viewDidLoad() {
     super.viewDidLoad()
-    title = "AnimaX Case Runner"
-    view.backgroundColor = .systemBackground
-    parseArguments()
-    buildUI()
-    do {
-      cases = try loadCases()
-      appendStatus("Loaded \(cases.count) cases")
-    } catch {
-      appendStatus("Failed to load cases: \(error.localizedDescription)")
-    }
+    view.backgroundColor = UIColor(white: 0.98, alpha: 1.0)
+    navigationController?.setNavigationBarHidden(true, animated: false)
+    parseLaunchArguments()
+    loadCaseSpecs()
+    showHome()
+
     if ProcessInfo.processInfo.arguments.contains("--autorun") {
-      Task { await runBenchmark() }
+      showScene(engine: selectedEngine, count: launchCount)
     }
   }
 
-  private func parseArguments() {
+  override func viewWillAppear(_ animated: Bool) {
+    super.viewWillAppear(animated)
+    navigationController?.setNavigationBarHidden(true, animated: animated)
+  }
+
+  override func viewDidLayoutSubviews() {
+    super.viewDidLayoutSubviews()
+    guard showingScene else {
+      return
+    }
+    let size = stage.bounds.size
+    guard size.width > 0, size.height > 0 else {
+      return
+    }
+    if needsStagePopulation || size != lastStageSize {
+      populateStage(engine: currentSceneEngine, count: currentSceneCount)
+      needsStagePopulation = false
+      lastStageSize = size
+    }
+  }
+
+  deinit {
+    releaseScene()
+  }
+
+  private func parseLaunchArguments() {
     for argument in ProcessInfo.processInfo.arguments {
-      if argument.hasPrefix("--iterations=") {
-        iterations = Int(argument.replacingOccurrences(of: "--iterations=", with: "")) ?? iterations
-      } else if argument.hasPrefix("--case-duration-ms=") {
-        caseDurationMs = UInt64(argument.replacingOccurrences(of: "--case-duration-ms=", with: "")) ?? caseDurationMs
-      } else if argument.hasPrefix("--engine=") {
-        engineFilter = argument.replacingOccurrences(of: "--engine=", with: "")
+      if argument.hasPrefix("--engine=") {
+        let value = argument.replacingOccurrences(of: "--engine=", with: "")
+        selectedEngine = Engine(rawValue: value.lowercased()) ?? selectedEngine
+      } else if argument.hasPrefix("--count=") {
+        let value = argument.replacingOccurrences(of: "--count=", with: "")
+        launchCount = normalizeCount(Int(value) ?? launchCount)
+      } else if argument == "--animax-multithread"
+          || argument == "--animax-multithread=true" {
+        animaxMultiThreadEnabled = true
       }
     }
   }
 
-  private func buildUI() {
+  private func showHome() {
+    releaseScene()
+    showingScene = false
+    view.subviews.forEach { $0.removeFromSuperview() }
+    view.backgroundColor = UIColor(white: 0.98, alpha: 1.0)
+
     let stack = UIStackView()
     stack.axis = .vertical
     stack.spacing = 12
     stack.translatesAutoresizingMaskIntoConstraints = false
     view.addSubview(stack)
 
-    stage.backgroundColor = UIColor(white: 0.96, alpha: 1.0)
-    stage.translatesAutoresizingMaskIntoConstraints = false
-    stack.addArrangedSubview(stage)
+    let titleLabel = UILabel()
+    titleLabel.text = "AnimaX vs Lottie FPS Benchmark"
+    titleLabel.textColor = UIColor(white: 0.27, alpha: 1.0)
+    titleLabel.font = .systemFont(ofSize: 24, weight: .regular)
+    titleLabel.adjustsFontSizeToFitWidth = true
+    titleLabel.minimumScaleFactor = 0.72
+    stack.addArrangedSubview(titleLabel)
+    titleLabel.heightAnchor.constraint(equalToConstant: 44).isActive = true
 
-    runButton.setTitle("Run cases", for: .normal)
-    runButton.addTarget(self, action: #selector(runTapped), for: .touchUpInside)
-    stack.addArrangedSubview(runButton)
+    let engineRow = UIStackView()
+    engineRow.axis = .horizontal
+    engineRow.spacing = 24
+    engineRow.distribution = .fillEqually
+    stack.addArrangedSubview(engineRow)
+    engineRow.heightAnchor.constraint(equalToConstant: 56).isActive = true
 
-    statusView.isEditable = false
-    statusView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-    stack.addArrangedSubview(statusView)
+    animaxButton = makeCheckButton(title: "AnimaX", action: #selector(animaxSelected))
+    lottieButton = makeCheckButton(title: "Lottie", action: #selector(lottieSelected))
+    engineRow.addArrangedSubview(animaxButton!)
+    engineRow.addArrangedSubview(lottieButton!)
+
+    animaxMultiThreadButton = makeCheckButton(
+      title: "Enable multi thread",
+      action: #selector(animaxMultiThreadToggled)
+    )
+    stack.addArrangedSubview(animaxMultiThreadButton!)
+    animaxMultiThreadButton!.heightAnchor.constraint(equalToConstant: 48).isActive = true
+
+    let buttonGrid = UIStackView()
+    buttonGrid.axis = .vertical
+    buttonGrid.spacing = 12
+    buttonGrid.distribution = .fillEqually
+    stack.addArrangedSubview(buttonGrid)
+
+    for rowIndex in stride(from: 0, to: Self.counts.count, by: 2) {
+      let row = UIStackView()
+      row.axis = .horizontal
+      row.spacing = 12
+      row.distribution = .fillEqually
+      buttonGrid.addArrangedSubview(row)
+
+      for index in rowIndex..<min(rowIndex + 2, Self.counts.count) {
+        let count = Self.counts[index]
+        let button = UIButton(type: .system)
+        button.setTitle("x\(count)", for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 20, weight: .regular)
+        button.setTitleColor(UIColor(white: 0.12, alpha: 1.0), for: .normal)
+        button.backgroundColor = UIColor(white: 0.84, alpha: 1.0)
+        button.layer.cornerRadius = 4
+        button.isEnabled = !caseSpecs.isEmpty
+        button.tag = count
+        button.addTarget(self, action: #selector(countTapped(_:)), for: .touchUpInside)
+        row.addArrangedSubview(button)
+      }
+    }
 
     NSLayoutConstraint.activate([
-      stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-      stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-      stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-      stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
-      stage.heightAnchor.constraint(equalTo: stack.heightAnchor, multiplier: 0.58),
-      runButton.heightAnchor.constraint(equalToConstant: 44),
-      statusView.heightAnchor.constraint(greaterThanOrEqualToConstant: 140)
+      stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
+      stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+      stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20)
     ])
+
+    updateHomeControls()
   }
 
-  @objc private func runTapped() {
-    Task { await runBenchmark() }
+  private func showScene(engine: Engine, count: Int) {
+    guard !caseSpecs.isEmpty else {
+      return
+    }
+
+    releaseScene()
+    showingScene = true
+    selectedEngine = engine
+    currentSceneEngine = engine
+    currentSceneCount = normalizeCount(count)
+    mainThreadFps = 0.0
+    animaxGpuFps = 0.0
+    animaxGpuFpsValues.removeAll()
+    needsStagePopulation = true
+    lastStageSize = .zero
+    view.subviews.forEach { $0.removeFromSuperview() }
+    view.backgroundColor = UIColor(white: 0.07, alpha: 1.0)
+
+    let stack = UIStackView()
+    stack.axis = .vertical
+    stack.spacing = 0
+    stack.translatesAutoresizingMaskIntoConstraints = false
+    view.addSubview(stack)
+
+    let header = UIView()
+    header.backgroundColor = UIColor(white: 0.07, alpha: 1.0)
+    stack.addArrangedSubview(header)
+    header.heightAnchor.constraint(equalToConstant: 60).isActive = true
+
+    let backButton = UIButton(type: .system)
+    backButton.setTitle("Back", for: .normal)
+    backButton.titleLabel?.font = .systemFont(ofSize: 18, weight: .regular)
+    backButton.setTitleColor(UIColor(white: 0.12, alpha: 1.0), for: .normal)
+    backButton.backgroundColor = UIColor(white: 0.88, alpha: 1.0)
+    backButton.layer.cornerRadius = 4
+    backButton.translatesAutoresizingMaskIntoConstraints = false
+    backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+    header.addSubview(backButton)
+
+    let titleLabel = UILabel()
+    titleLabel.text = "\(engine.title) x\(currentSceneCount)"
+    titleLabel.textColor = .white
+    titleLabel.font = .systemFont(ofSize: 24, weight: .regular)
+    titleLabel.translatesAutoresizingMaskIntoConstraints = false
+    header.addSubview(titleLabel)
+
+    NSLayoutConstraint.activate([
+      backButton.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 12),
+      backButton.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+      backButton.widthAnchor.constraint(equalToConstant: 92),
+      backButton.heightAnchor.constraint(equalToConstant: 44),
+      titleLabel.leadingAnchor.constraint(equalTo: backButton.trailingAnchor, constant: 12),
+      titleLabel.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -12),
+      titleLabel.centerYAnchor.constraint(equalTo: header.centerYAnchor)
+    ])
+
+    let fpsLabel = InsetLabel(textInsets: UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16))
+    fpsLabel.textColor = UIColor(white: 0.90, alpha: 1.0)
+    fpsLabel.font = .systemFont(ofSize: 15, weight: .regular)
+    fpsLabel.numberOfLines = 0
+    fpsLabel.backgroundColor = UIColor(white: 0.13, alpha: 1.0)
+    fpsLabel.translatesAutoresizingMaskIntoConstraints = false
+    self.fpsLabel = fpsLabel
+    stack.addArrangedSubview(fpsLabel)
+    fpsLabel.heightAnchor.constraint(equalToConstant: 112).isActive = true
+
+    stage.backgroundColor = UIColor(white: 0.96, alpha: 1.0)
+    stage.clipsToBounds = true
+    stack.addArrangedSubview(stage)
+
+    NSLayoutConstraint.activate([
+      stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+      stack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+      stack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+    ])
+
+    updateFpsText()
+    mainThreadFpsMonitor.start { [weak self] fps in
+      self?.mainThreadFps = fps
+      self?.updateFpsText()
+    }
+    view.setNeedsLayout()
   }
 
-  private func runBenchmark() async {
-    guard !cases.isEmpty else { return }
-    runButton.isEnabled = false
-    caseRuns.removeAll()
-    runId = Self.timestamp()
-    appendStatus("Run \(runId) started iterations=\(iterations) caseDurationMs=\(caseDurationMs) engine=\(engineFilter)")
+  private func populateStage(engine: Engine, count: Int) {
+    releaseAnimationViews()
+    stage.subviews.forEach { $0.removeFromSuperview() }
+    let spec = gridSpec(for: count, stageSize: stage.bounds.size)
+    let grid = UIView(frame: CGRect(
+      x: (stage.bounds.width - spec.width) / 2.0,
+      y: (stage.bounds.height - spec.height) / 2.0,
+      width: spec.width,
+      height: spec.height
+    ))
+    grid.clipsToBounds = true
+    stage.addSubview(grid)
 
-    for engine in engines() {
-      for spec in cases {
-        for iteration in 0..<iterations {
-          appendStatus("Running \(engine) / \(spec.id) \(iteration + 1)/\(iterations)")
-          let caseRun = await runCase(engine: engine, spec: spec, iteration: iteration)
-          caseRuns.append(caseRun.asDictionary())
-          writeResults(final: false)
-          appendStatus("\(engine) / \(spec.id) \(caseRun.error == nil ? "launched" : "error")")
-          try? await Task.sleep(nanoseconds: 500_000_000)
-        }
+    for index in 0..<count {
+      let column = index % spec.columns
+      let row = index / spec.columns
+      let tile = UIView(frame: CGRect(
+        x: CGFloat(column) * spec.tileWidth,
+        y: CGFloat(row) * spec.tileHeight,
+        width: spec.tileWidth,
+        height: spec.tileHeight
+      ))
+      tile.clipsToBounds = true
+      grid.addSubview(tile)
+
+      do {
+        let assetPath = caseSpecs[index % caseSpecs.count].file
+        let animationView = try engine == .animax
+          ? createAnimaxView(assetPath: assetPath)
+          : createLottieView(assetPath: assetPath)
+        animationView.translatesAutoresizingMaskIntoConstraints = false
+        tile.addSubview(animationView)
+        NSLayoutConstraint.activate([
+          animationView.leadingAnchor.constraint(equalTo: tile.leadingAnchor),
+          animationView.trailingAnchor.constraint(equalTo: tile.trailingAnchor),
+          animationView.topAnchor.constraint(equalTo: tile.topAnchor),
+          animationView.bottomAnchor.constraint(equalTo: tile.bottomAnchor)
+        ])
+      } catch {
+        let errorLabel = UILabel(frame: tile.bounds)
+        errorLabel.text = "Load error"
+        errorLabel.textColor = .systemRed
+        errorLabel.font = .systemFont(ofSize: 10, weight: .regular)
+        errorLabel.textAlignment = .center
+        tile.addSubview(errorLabel)
       }
     }
-
-    writeResults(final: true)
-    appendStatus("Run complete")
-    runButton.isEnabled = true
   }
 
-  private func runCase(engine: String, spec: CaseSpec, iteration: Int) async -> CaseRun {
-    clearStage()
-    let caseRun = CaseRun(engine: engine, spec: spec, iteration: iteration)
-    currentCaseRun = caseRun
-    firstFrameSeen = false
-    let caseSignpost = OSSignpostID(log: Self.signpostLog)
-    os_signpost(.begin, log: Self.signpostLog, name: "bench_case_run", signpostID: caseSignpost)
-    defer {
-      os_signpost(.end, log: Self.signpostLog, name: "bench_case_run", signpostID: caseSignpost)
-    }
-
-    do {
-      let url = try urlForCase(spec)
-      let data = try Self.signposted("bench_read_asset") {
-        try Data(contentsOf: url)
-      }
-      let json = String(decoding: data, as: UTF8.self)
-
-      try Self.signposted("bench_set_animation") {
-        if engine == "animax" {
-          runAnimax(json: json)
-        } else {
-          try runLottie(data: data)
-        }
-      }
-
-      for _ in 0..<150 where !firstFrameSeen {
-        try? await Task.sleep(nanoseconds: 100_000_000)
-      }
-      if !firstFrameSeen {
-        caseRun.error = "timeout waiting for first frame"
-      } else {
-        try? await Task.sleep(nanoseconds: caseDurationMs * 1_000_000)
-      }
-    } catch {
-      caseRun.error = error.localizedDescription
-    }
-
-    if let animaxView = currentAnimaxView {
-      animaxView.stop()
-      animaxView.removeAnimationEventListener(self)
-    }
-    clearStage()
-    currentAnimaxView = nil
-    currentCaseRun = nil
-    return caseRun
-  }
-
-  private func runAnimax(json: String) {
+  private func createAnimaxView(assetPath: String) throws -> UIView {
     let context = AnimaXContext(ability: BaseAnimaXAbility())
+    context.enableMultiThreadAccelerate = animaxMultiThreadEnabled
+
     let animaxView = AnimaXView(context: context)
-    animaxView.translatesAutoresizingMaskIntoConstraints = false
     animaxView.setLoop(true)
-    animaxView.setAutoplay(false)
+    animaxView.setAutoplay(true)
+    animaxView.setObjectfit("contain")
+    animaxView.setFPSEventInterval(Self.animaxFpsIntervalMs)
     animaxView.addAnimationEventListener(self)
-    addToStage(animaxView)
-    currentAnimaxView = animaxView
-    animaxView.setJson(json)
+    animaxView.setJson(try stringForAsset(assetPath))
+    animaxViews.append(animaxView)
+    return animaxView
   }
 
-  private func runLottie(data: Data) throws {
+  private func createLottieView(assetPath: String) throws -> UIView {
+    let data = try dataForAsset(assetPath)
     let animation = try LottieAnimation.from(data: data)
-    markCompositionReady()
     let lottieView = LottieAnimationView(
       animation: animation,
       configuration: LottieConfiguration(renderingEngine: .automatic)
     )
-    lottieView.translatesAutoresizingMaskIntoConstraints = false
     lottieView.contentMode = .scaleAspectFit
-    addToStage(lottieView)
     lottieView.loopMode = .loop
     lottieView.play()
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-      self?.currentCaseRun?.firstFrameSeen = true
-      self?.firstFrameSeen = true
-      Self.signpostEvent("bench_first_frame")
-    }
+    lottieViews.append(lottieView)
+    return lottieView
   }
 
-  func onReady(_ params: [AnyHashable: Any]) {
-    markCompositionReady()
-    currentAnimaxView?.play()
-  }
-
-  func onCompositionReady(_ params: [AnyHashable: Any]) {
-    markCompositionReady()
-  }
-
-  func onFirstFrame(_ params: [AnyHashable: Any]) {
-    guard let caseRun = currentCaseRun, !caseRun.firstFrameSeen else {
+  func onFps(_ params: [AnyHashable: Any]) {
+    guard let fpsNumber = params["fps"] as? NSNumber else {
       return
     }
-    caseRun.firstFrameSeen = true
-    firstFrameSeen = true
-    Self.signpostEvent("bench_first_frame")
+    let animationID = (params["animationID"] as? String) ?? "animax"
+    DispatchQueue.main.async { [weak self] in
+      guard let self, self.showingScene, self.currentSceneEngine == .animax else {
+        return
+      }
+      self.animaxGpuFpsValues[animationID] = fpsNumber.doubleValue
+      self.animaxGpuFps = self.averagePositive(Array(self.animaxGpuFpsValues.values))
+      self.updateFpsText()
+    }
   }
 
   func onError(_ params: [AnyHashable: Any]) {
-    currentCaseRun?.error = String(describing: params)
+    print("[AnimaXBench] AnimaX error: \(params)")
   }
 
-  private func markCompositionReady() {
-    guard let caseRun = currentCaseRun, !caseRun.compositionReady else {
+  private func releaseScene() {
+    mainThreadFpsMonitor.stop()
+    releaseAnimationViews()
+    stage.subviews.forEach { $0.removeFromSuperview() }
+    fpsLabel = nil
+    needsStagePopulation = false
+    lastStageSize = .zero
+  }
+
+  private func releaseAnimationViews() {
+    for view in animaxViews {
+      view.removeAnimationEventListener(self)
+      view.stop()
+    }
+    for view in lottieViews {
+      view.stop()
+    }
+    animaxViews.removeAll()
+    lottieViews.removeAll()
+    animaxGpuFpsValues.removeAll()
+  }
+
+  private func updateFpsText() {
+    guard let fpsLabel else {
       return
     }
-    caseRun.compositionReady = true
-    Self.signpostEvent("bench_composition_ready")
+    let text: String
+    if currentSceneEngine == .animax {
+      text = """
+      Engine: AnimaX  Count: x\(currentSceneCount)
+      Multi thread: \(animaxMultiThreadEnabled ? "enabled" : "disabled")
+      Assets: \(assetSummary(for: currentSceneCount))
+      Main thread FPS: \(formatFps(mainThreadFps))
+      AnimaX GPU FPS: \(formatFps(animaxGpuFps))
+      """
+    } else {
+      text = """
+      Engine: Lottie  Count: x\(currentSceneCount)
+      Assets: \(assetSummary(for: currentSceneCount))
+      Main thread FPS: \(formatFps(mainThreadFps))
+      """
+    }
+    fpsLabel.text = text
   }
 
-  private func addToStage(_ child: UIView) {
-    stage.addSubview(child)
-    NSLayoutConstraint.activate([
-      child.leadingAnchor.constraint(equalTo: stage.leadingAnchor),
-      child.trailingAnchor.constraint(equalTo: stage.trailingAnchor),
-      child.topAnchor.constraint(equalTo: stage.topAnchor),
-      child.bottomAnchor.constraint(equalTo: stage.bottomAnchor)
-    ])
+  private func updateHomeControls() {
+    updateCheckButton(animaxButton, selected: selectedEngine == .animax)
+    updateCheckButton(lottieButton, selected: selectedEngine == .lottie)
+    updateCheckButton(animaxMultiThreadButton, selected: animaxMultiThreadEnabled)
+    animaxMultiThreadButton?.isHidden = selectedEngine != .animax
   }
 
-  private func clearStage() {
-    for subview in stage.subviews {
-      subview.removeFromSuperview()
+  private func loadCaseSpecs() {
+    do {
+      guard let url = Bundle.main.url(
+        forResource: "manifest",
+        withExtension: "json",
+        subdirectory: "export_output"
+      ) else {
+        throw benchmarkError("manifest not found")
+      }
+      let data = try Data(contentsOf: url)
+      let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+      guard let rawCases = object?["cases"] as? [[String: Any]] else {
+        throw benchmarkError("cases missing")
+      }
+      var files: [String] = []
+      for item in rawCases {
+        guard let file = item["file"] as? String, !files.contains(file) else {
+          continue
+        }
+        files.append(file)
+      }
+      guard files.count >= Self.minUniqueCases else {
+        throw benchmarkError("manifest has fewer than \(Self.minUniqueCases) unique case files")
+      }
+      caseSpecs = files.map { CaseSpec(file: $0) }
+    } catch {
+      caseSpecs = []
+      print("[AnimaXBench] Failed to load cases: \(error.localizedDescription)")
     }
   }
 
-  private func engines() -> [String] {
-    if engineFilter == "animax" { return ["animax"] }
-    if engineFilter == "lottie" { return ["lottie"] }
-    return ["animax", "lottie"]
+  private func dataForAsset(_ assetPath: String) throws -> Data {
+    guard let url = urlForAsset(assetPath) else {
+      throw benchmarkError("case not found: \(assetPath)")
+    }
+    return try Data(contentsOf: url)
   }
 
-  private func loadCases() throws -> [CaseSpec] {
-    guard let url = Bundle.main.url(forResource: "manifest", withExtension: "json", subdirectory: "export_output") else {
-      throw NSError(domain: "Benchmark", code: 1, userInfo: [NSLocalizedDescriptionKey: "manifest not found"])
+  private func stringForAsset(_ assetPath: String) throws -> String {
+    let data = try dataForAsset(assetPath)
+    guard let text = String(data: data, encoding: .utf8) else {
+      throw benchmarkError("case is not UTF-8: \(assetPath)")
     }
-    let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
-    guard let rawCases = object?["cases"] as? [[String: Any]] else {
-      throw NSError(domain: "Benchmark", code: 2, userInfo: [NSLocalizedDescriptionKey: "cases missing"])
-    }
-    return rawCases.compactMap { item in
-      guard let id = item["id"] as? String, let file = item["file"] as? String else { return nil }
-      return CaseSpec(
-        id: id,
-        file: file,
-        category: item["category"] as? String ?? "",
-        features: item["features"] as? [String] ?? []
+    return text
+  }
+
+  private func urlForAsset(_ assetPath: String) -> URL? {
+    let bundlePath = "export_output/" + assetPath
+    let name = (bundlePath as NSString).deletingPathExtension
+    let ext = (bundlePath as NSString).pathExtension
+    return Bundle.main.url(forResource: name, withExtension: ext)
+  }
+
+  private func gridSpec(for count: Int, stageSize: CGSize) -> GridSpec {
+    if count <= Self.minUniqueCases {
+      let columns = min(Self.maxColumns, count)
+      let rows = Int(ceil(Double(count) / Double(columns)))
+      let tileSize = max(CGFloat(48), min(
+        stageSize.width / CGFloat(Self.maxColumns),
+        stageSize.height / CGFloat(Self.maxRows)
+      ))
+      return GridSpec(
+        columns: columns,
+        rows: rows,
+        width: CGFloat(columns) * tileSize,
+        height: CGFloat(rows) * tileSize,
+        tileWidth: tileSize,
+        tileHeight: tileSize
       )
     }
-  }
 
-  private func urlForCase(_ spec: CaseSpec) throws -> URL {
-    let path = "export_output/" + spec.file
-    let name = (path as NSString).deletingPathExtension
-    let ext = (path as NSString).pathExtension
-    if let url = Bundle.main.url(forResource: name, withExtension: ext) {
-      return url
+    var bestColumns = 1
+    var bestRows = count
+    var bestScore = -CGFloat.greatestFiniteMagnitude
+    for columns in 1...count {
+      let rows = Int(ceil(Double(count) / Double(columns)))
+      let emptySlots = columns * rows - count
+      let tileWidth = stageSize.width / CGFloat(columns)
+      let tileHeight = stageSize.height / CGFloat(rows)
+      let score = min(tileWidth, tileHeight) - CGFloat(emptySlots) * 1000
+      if score > bestScore {
+        bestScore = score
+        bestColumns = columns
+        bestRows = rows
+      }
     }
-    throw NSError(domain: "Benchmark", code: 3, userInfo: [NSLocalizedDescriptionKey: "case not found: \(spec.file)"])
+
+    let tileWidth = max(CGFloat(1), floor(stageSize.width / CGFloat(bestColumns)))
+    let tileHeight = max(CGFloat(1), floor(stageSize.height / CGFloat(bestRows)))
+    return GridSpec(
+      columns: bestColumns,
+      rows: bestRows,
+      width: tileWidth * CGFloat(bestColumns),
+      height: tileHeight * CGFloat(bestRows),
+      tileWidth: tileWidth,
+      tileHeight: tileHeight
+    )
   }
 
-  private func writeResults(final: Bool) {
-    let root: [String: Any] = [
-      "schemaVersion": 2,
-      "runnerMode": "case-launch",
-      "runId": runId,
-      "final": final,
-      "platform": "ios",
-      "engineFilter": engineFilter,
-      "iterations": iterations,
-      "caseDurationMs": caseDurationMs,
-      "device": [
-        "model": UIDevice.current.model,
-        "systemName": UIDevice.current.systemName,
-        "systemVersion": UIDevice.current.systemVersion,
-        "maximumFramesPerSecond": UIScreen.main.maximumFramesPerSecond
-      ],
-      "caseRuns": caseRuns
-    ]
-    do {
-      let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
-      let dir = try resultDirectory()
-      let url = dir.appendingPathComponent("animax-lottie-ios-\(runId).json")
-      try data.write(to: url)
-    } catch {
-      appendStatus("Failed to write results: \(error.localizedDescription)")
+  private func assetSummary(for count: Int) -> String {
+    if caseSpecs.isEmpty {
+      return "--"
     }
-  }
-
-  private func resultDirectory() throws -> URL {
-    let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-    let dir = base.appendingPathComponent("results", isDirectory: true)
-    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    return dir
-  }
-
-  private func appendStatus(_ text: String) {
-    let line = "\(Self.timestamp()) \(text)\n"
-    statusView.text.append(line)
-    print("[AnimaXBench] \(line)", terminator: "")
-  }
-
-  private static let signpostLog = OSLog(subsystem: "com.animax.benchmark", category: "CaseRunner")
-
-  private static func signposted<T>(_ name: StaticString, _ work: () throws -> T) rethrows -> T {
-    let signpostID = OSSignpostID(log: signpostLog)
-    os_signpost(.begin, log: signpostLog, name: name, signpostID: signpostID)
-    defer {
-      os_signpost(.end, log: signpostLog, name: name, signpostID: signpostID)
+    if count <= caseSpecs.count {
+      return "\(count) unique local JSON"
     }
-    return try work()
+    return "\(caseSpecs.count) local JSON, repeated to \(count)"
   }
 
-  private static func signpostEvent(_ name: StaticString) {
-    os_signpost(.event, log: signpostLog, name: name)
+  private func normalizeCount(_ count: Int) -> Int {
+    Self.counts.contains(count) ? count : 1
   }
 
-  private static func timestamp() -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyyMMdd-HHmmss"
-    return formatter.string(from: Date())
+  private func averagePositive(_ values: [Double]) -> Double {
+    let positiveValues = values.filter { $0 > 0 }
+    guard !positiveValues.isEmpty else {
+      return 0
+    }
+    return positiveValues.reduce(0, +) / Double(positiveValues.count)
+  }
+
+  private func formatFps(_ fps: Double) -> String {
+    fps > 0 ? String(format: "%.1f", fps) : "--"
+  }
+
+  private func makeCheckButton(title: String, action: Selector) -> UIButton {
+    let button = UIButton(type: .system)
+    button.setTitle("  \(title)", for: .normal)
+    button.setTitleColor(.label, for: .normal)
+    button.titleLabel?.font = .systemFont(ofSize: 20, weight: .regular)
+    button.contentHorizontalAlignment = .leading
+    button.addTarget(self, action: action, for: .touchUpInside)
+    return button
+  }
+
+  private func updateCheckButton(_ button: UIButton?, selected: Bool) {
+    let imageName = selected ? "checkmark.square.fill" : "square"
+    button?.setImage(UIImage(systemName: imageName), for: .normal)
+    button?.tintColor = selected ? UIColor(red: 0.0, green: 0.52, blue: 0.45, alpha: 1.0) : .systemGray
+  }
+
+  private func benchmarkError(_ message: String) -> NSError {
+    NSError(domain: "Benchmark", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+  }
+
+  @objc private func animaxSelected() {
+    selectedEngine = .animax
+    updateHomeControls()
+  }
+
+  @objc private func lottieSelected() {
+    selectedEngine = .lottie
+    updateHomeControls()
+  }
+
+  @objc private func animaxMultiThreadToggled() {
+    animaxMultiThreadEnabled.toggle()
+    updateHomeControls()
+  }
+
+  @objc private func countTapped(_ sender: UIButton) {
+    showScene(engine: selectedEngine, count: sender.tag)
+  }
+
+  @objc private func backTapped() {
+    showHome()
+  }
+}
+
+private final class MainThreadFpsMonitor {
+  private var displayLink: CADisplayLink?
+  private var lastTimestamp: CFTimeInterval = 0
+  private var frameCount = 0
+  private var onUpdate: ((Double) -> Void)?
+
+  func start(_ onUpdate: @escaping (Double) -> Void) {
+    stop()
+    self.onUpdate = onUpdate
+    lastTimestamp = 0
+    frameCount = 0
+    let displayLink = CADisplayLink(target: self, selector: #selector(tick(_:)))
+    displayLink.add(to: .main, forMode: .common)
+    self.displayLink = displayLink
+  }
+
+  func stop() {
+    displayLink?.invalidate()
+    displayLink = nil
+    onUpdate = nil
+    lastTimestamp = 0
+    frameCount = 0
+  }
+
+  @objc private func tick(_ displayLink: CADisplayLink) {
+    if lastTimestamp == 0 {
+      lastTimestamp = displayLink.timestamp
+      return
+    }
+    frameCount += 1
+    let elapsed = displayLink.timestamp - lastTimestamp
+    guard elapsed >= 1.0 else {
+      return
+    }
+    onUpdate?(Double(frameCount) / elapsed)
+    frameCount = 0
+    lastTimestamp = displayLink.timestamp
+  }
+}
+
+private final class InsetLabel: UILabel {
+  private let textInsets: UIEdgeInsets
+
+  init(textInsets: UIEdgeInsets) {
+    self.textInsets = textInsets
+    super.init(frame: .zero)
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) {
+    nil
+  }
+
+  override func drawText(in rect: CGRect) {
+    super.drawText(in: rect.inset(by: textInsets))
+  }
+
+  override var intrinsicContentSize: CGSize {
+    let size = super.intrinsicContentSize
+    return CGSize(
+      width: size.width + textInsets.left + textInsets.right,
+      height: size.height + textInsets.top + textInsets.bottom
+    )
   }
 }

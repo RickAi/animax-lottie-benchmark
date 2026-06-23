@@ -11,26 +11,18 @@ The repository is intentionally client-only:
 
 ## What The App Does
 
-The checked-in Android app focuses on steady-state multi-instance rendering:
+The checked-in Android and iOS apps focus on steady-state multi-instance rendering:
 
 - Show a home screen with x1, x5, x10, x20, x40, and x60 render-count buttons.
 - Let the user choose AnimaX or Lottie with checkboxes.
-- Show an AnimaX-only "Enable multi thread" checkbox. AnimaX scenes are created with `AnimaXContext.Builder(...).multiThreadAccelerate(...)`.
+- Show an AnimaX-only "Enable multi thread" checkbox. Android maps it to `AnimaXContext.Builder(...).multiThreadAccelerate(...)`; iOS maps it to `AnimaXContext.enableMultiThreadAccelerate`.
 - Open a dedicated render page where all animations autoplay and loop.
 - Keep x1/x5/x10/x20 on the fixed x20-derived grid, and shrink x40/x60 tiles with dynamic grids that fill the stage.
 - Use different local Lottie JSON files for x1/x5/x10/x20, then repeat local files for x40/x60 pressure cases.
 - Show main-thread FPS for both engines.
-- Show AnimaX GPU/offscreen FPS from `AnimationListenerAdapter.onFPS` after setting `setFpsEventInterval(1000)`.
+- Show AnimaX GPU/offscreen FPS from `AnimationListenerAdapter.onFPS` on Android and `AnimaXAnimationListener.onFps` on iOS after setting a 1000 ms FPS event interval.
 
 Memory is intentionally measured from host-side tooling.
-
-The checked-in iOS app still focuses on deterministic case construction and startup:
-
-- Load the local manifest and Lottie JSON assets.
-- Construct either `AnimaXView` or `LottieAnimationView` for each case.
-- Start playback and keep the case on screen for a configurable duration.
-- Export a small JSON run log with case status, composition-ready state, first-frame state, and errors.
-- Emit iOS `os_signpost` events for external tooling.
 
 Collect memory, CPU, frame interval, and latency metrics from PC-side tooling such as Android Studio Profiler, Perfetto, Jetpack Macrobenchmark, Xcode Instruments, and XCTest metrics. For release-quality numbers, run on physical devices, release builds, thermal state stable, airplane mode enabled, and fixed display refresh rate when possible. Simulator/emulator runs are useful for smoke tests only.
 
@@ -84,7 +76,7 @@ The iOS app uses the published `AnimaX` CocoaPod with the same subspec shape as 
 ```sh
 cd ios/AnimaXBenchmark
 ./bundle_install.sh
-xcodebuild -workspace AnimaXExample.xcworkspace -scheme AnimaXExample -configuration Release -destination 'platform=iOS Simulator,name=iPhone 16' build
+xcodebuild -workspace AnimaXExample.xcworkspace -scheme AnimaXExample -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build
 ```
 
 The default `lottie-ios` version is `4.6.1`, matching the current GitHub/CocoaPods release metadata checked while scaffolding this repo.
@@ -92,17 +84,17 @@ The default `lottie-ios` version is `4.6.1`, matching the current GitHub/CocoaPo
 Run manually from Xcode, or pass launch arguments:
 
 ```text
---autorun --iterations=5 --engine=all --case-duration-ms=10000
+--autorun --engine=animax --count=20 --animax-multithread
 ```
 
-Results are written to the app documents directory under `results/`.
+Use `--engine=lottie` and any supported `--count=1|5|10|20|40|60` for Lottie scenes.
 
 ## Result Summary
 
-After pulling one or more iOS result JSON files:
+The app keeps FPS display in-app and leaves memory, CPU, frame intervals, hitches, and trace analysis to host-side profilers. The legacy summary helper remains useful for older exported JSON runs:
 
 ```sh
 python3 scripts/summarize_results.py path/to/results/*.json
 ```
 
-This prints grouped case launch counts, first-frame status, composition-ready status, and errors. Performance metrics should come from the PC-side profiler output captured during the same run.
+Performance metrics should come from the PC-side profiler output captured during the same run.

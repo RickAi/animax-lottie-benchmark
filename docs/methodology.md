@@ -18,29 +18,21 @@ The Android app runs a manual multi-instance FPS scenario:
 
 Memory is measured from host-side tooling, not in the app.
 
-## iOS In-App Case Runner
+## iOS In-App FPS Runner
 
-The checked-in iOS app runs the local Lottie JSON cases and exports the case-run schema. The app is responsible for:
+The iOS app mirrors the Android manual multi-instance FPS scenario:
 
-- Loading the manifest and bundled case assets.
-- Constructing the requested engine view.
-- Starting playback.
-- Keeping the case visible for `caseDurationMs`.
-- Recording only launch status, composition-ready status, first-frame status, and errors.
+- x1, x5, x10, x20, x40, and x60 render-count buttons.
+- One selected engine at a time: AnimaX or Lottie.
+- An AnimaX-only multi-thread checkbox that maps to `AnimaXContext.enableMultiThreadAccelerate`.
+- Local-only animation assets loaded from the app bundle.
+- Autoplay and loop enabled for every instance.
+- x1/x5/x10/x20 use different local JSON files selected from the manifest.
+- x40/x60 repeat local JSON files and shrink tiles with dynamic grids so the stage is filled without overflow.
+- Main-thread FPS sampled with `CADisplayLink`.
+- AnimaX GPU/offscreen FPS sampled through `AnimaXAnimationListener.onFps` after `setFPSEventInterval(1000)`.
 
-The apps do not collect FPS, frame intervals, jank, dropped frames, CPU time, memory, heap, resident size, or engine memory internally. Those values should come from platform tooling on the host machine.
-
-## iOS Profiler Alignment Markers
-
-iOS emits `os_signpost` markers for Instruments and XCTest signpost metrics:
-
-- `bench_case_run`
-- `bench_read_asset`
-- `bench_set_animation`
-- `bench_composition_ready`
-- `bench_first_frame`
-
-Treat these markers as phase boundaries, not as the source of final performance numbers.
+The apps only show live FPS in-app. Frame intervals, jank, dropped frames, CPU time, memory, heap, resident size, and engine memory should come from platform tooling on the host machine.
 
 ## Android Measurement
 
