@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 ADB="${ADB:-adb}"
 ENGINE="animax"
 COUNT="1"
+ANIMAX_MULTITHREAD="false"
 BUILD_ONLY=0
 HOME_ONLY=0
 
@@ -15,6 +16,8 @@ Usage: $0 [options]
 Options:
   --engine NAME   animax or lottie. Default: animax.
   --count N       1, 5, 10, 20, 40, or 60. Default: 1.
+  --animax-multithread
+                  Enable AnimaX multi-thread acceleration. Default: false.
   --home          Launch the home screen instead of a scene.
   --build-only    Build APK but do not install/run.
 EOF
@@ -24,6 +27,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --engine) ENGINE="$2"; shift 2 ;;
     --count) COUNT="$2"; shift 2 ;;
+    --animax-multithread) ANIMAX_MULTITHREAD="true"; shift ;;
     --home) HOME_ONLY=1; shift ;;
     --build-only) BUILD_ONLY=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -89,6 +93,7 @@ else
     -n com.animax.benchmark/.BenchmarkActivity \
     --ez autorun true \
     --es engine "$ENGINE" \
-    --ei count "$COUNT" >/dev/null
+    --ei count "$COUNT" \
+    --ez animaxMultiThread "$ANIMAX_MULTITHREAD" >/dev/null
   echo "Launched $ENGINE x$COUNT scene"
 fi

@@ -15,6 +15,7 @@ The checked-in Android app focuses on steady-state multi-instance rendering:
 
 - Show a home screen with x1, x5, x10, x20, x40, and x60 render-count buttons.
 - Let the user choose AnimaX or Lottie with checkboxes.
+- Show an AnimaX-only "Enable multi thread" checkbox. AnimaX scenes are created with `AnimaXContext.Builder(...).multiThreadAccelerate(...)`.
 - Open a dedicated render page where all animations autoplay and loop.
 - Keep x1/x5/x10/x20 on the fixed x20-derived grid, and shrink x40/x60 tiles with dynamic grids that fill the stage.
 - Use different local Lottie JSON files for x1/x5/x10/x20, then repeat local files for x40/x60 pressure cases.
@@ -71,7 +72,7 @@ adb install -r app/build/outputs/apk/noasan/debug/app-noasan-debug.apk
 Launch an Android scene from the command line:
 
 ```sh
-../scripts/android_run.sh --engine animax --count 60
+../scripts/android_run.sh --engine animax --count 60 --animax-multithread
 ```
 
 The Android Lottie dependency defaults to `com.airbnb.android:lottie:6.7.1`, verified from Maven Central.

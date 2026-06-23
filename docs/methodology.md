@@ -8,6 +8,7 @@ The Android app runs a manual multi-instance FPS scenario:
 
 - x1, x5, x10, x20, x40, and x60 render-count buttons.
 - One selected engine at a time: AnimaX or Lottie.
+- An AnimaX-only multi-thread checkbox that maps to `AnimaXContext.Builder(...).multiThreadAccelerate(...)`.
 - Local-only animation assets loaded from the APK.
 - Autoplay and loop enabled for every instance.
 - x1/x5/x10/x20 use different local JSON files selected from the manifest.

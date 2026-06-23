@@ -17,8 +17,10 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import com.airbnb.lottie.LottieAnimationView;
 import com.airbnb.lottie.RenderMode;
+import com.lynx.animax.ability.NativeAbility;
 import com.lynx.animax.listener.AnimaXFPSParam;
 import com.lynx.animax.listener.AnimationListenerAdapter;
+import com.lynx.animax.ui.AnimaXContext;
 import com.lynx.animax.ui.AnimaXView;
 import com.lynx.animax.ui.ObjectFit;
 import com.lynx.animax.util.UriUtil;
@@ -53,6 +55,7 @@ public final class BenchmarkActivity extends Activity {
 
   private CheckBox animaxCheckBox;
   private CheckBox lottieCheckBox;
+  private CheckBox animaxMultiThreadCheckBox;
   private TextView homeStatus;
   private TextView fpsView;
   private FrameLayout stage;
@@ -61,6 +64,7 @@ public final class BenchmarkActivity extends Activity {
   private String currentSceneEngine = ENGINE_ANIMAX;
   private int currentSceneCount = 1;
   private boolean showingScene;
+  private boolean animaxMultiThreadEnabled;
   private float mainThreadFps;
   private float animaxGpuFps;
 
@@ -74,6 +78,7 @@ public final class BenchmarkActivity extends Activity {
     } catch (Exception e) {
       assetStatus = "Failed to load local assets: " + e.getMessage();
     }
+    animaxMultiThreadEnabled = getIntent().getBooleanExtra("animaxMultiThread", false);
     showHome();
     if (getIntent().getBooleanExtra("autorun", false)) {
       String engine = getIntent().getStringExtra("engine");
@@ -143,23 +148,43 @@ public final class BenchmarkActivity extends Activity {
     animaxCheckBox.setOnClickListener(v -> selectEngine(ENGINE_ANIMAX));
     lottieCheckBox.setOnClickListener(v -> selectEngine(ENGINE_LOTTIE));
 
-    LinearLayout buttonColumn = new LinearLayout(this);
-    buttonColumn.setOrientation(LinearLayout.VERTICAL);
-    buttonColumn.setGravity(Gravity.CENTER);
-    root.addView(buttonColumn, new LinearLayout.LayoutParams(
+    animaxMultiThreadCheckBox = new CheckBox(this);
+    animaxMultiThreadCheckBox.setText("Enable multi thread");
+    animaxMultiThreadCheckBox.setTextSize(16);
+    animaxMultiThreadCheckBox.setChecked(animaxMultiThreadEnabled);
+    animaxMultiThreadCheckBox.setOnClickListener(v ->
+        animaxMultiThreadEnabled = animaxMultiThreadCheckBox.isChecked());
+    root.addView(animaxMultiThreadCheckBox, new LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+    updateAnimaxMultiThreadVisibility();
+
+    LinearLayout buttonGrid = new LinearLayout(this);
+    buttonGrid.setOrientation(LinearLayout.VERTICAL);
+    buttonGrid.setGravity(Gravity.CENTER);
+    root.addView(buttonGrid, new LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-    for (int count : COUNTS) {
-      Button button = new Button(this);
-      button.setText("x" + count);
-      button.setTextSize(18);
-      button.setAllCaps(false);
-      button.setEnabled(!caseAssetPaths.isEmpty());
-      button.setOnClickListener(v -> showScene(selectedEngine, count));
-      LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-          ViewGroup.LayoutParams.MATCH_PARENT, dp(64));
-      params.setMargins(0, dp(8), 0, dp(8));
-      buttonColumn.addView(button, params);
+    for (int i = 0; i < COUNTS.length; i += 2) {
+      LinearLayout row = new LinearLayout(this);
+      row.setOrientation(LinearLayout.HORIZONTAL);
+      LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+          ViewGroup.LayoutParams.MATCH_PARENT, dp(72));
+      rowParams.setMargins(0, dp(4), 0, dp(4));
+      buttonGrid.addView(row, rowParams);
+
+      for (int j = i; j < i + 2 && j < COUNTS.length; j++) {
+        final int count = COUNTS[j];
+        Button button = new Button(this);
+        button.setText("x" + count);
+        button.setTextSize(18);
+        button.setAllCaps(false);
+        button.setEnabled(!caseAssetPaths.isEmpty());
+        button.setOnClickListener(v -> showScene(selectedEngine, count));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,
+            ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+        params.setMargins(dp(4), 0, dp(4), 0);
+        row.addView(button, params);
+      }
     }
 
     homeStatus = new TextView(this);
@@ -180,6 +205,7 @@ public final class BenchmarkActivity extends Activity {
     if (lottieCheckBox != null) {
       lottieCheckBox.setChecked(ENGINE_LOTTIE.equals(engine));
     }
+    updateAnimaxMultiThreadVisibility();
   }
 
   private void showScene(String engine, int count) {
@@ -228,7 +254,7 @@ public final class BenchmarkActivity extends Activity {
     fpsView.setPadding(dp(16), dp(8), dp(16), dp(8));
     fpsView.setBackgroundColor(0xff222222);
     root.addView(fpsView, new LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT, dp(92)));
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(112)));
 
     stage = new FrameLayout(this);
     stage.setBackgroundColor(0xfff4f4f4);
@@ -282,7 +308,10 @@ public final class BenchmarkActivity extends Activity {
   }
 
   private View createAnimaxView(int index, String assetPath) {
-    AnimaXView view = new AnimaXView(this);
+    AnimaXContext animaxContext = new AnimaXContext.Builder(new NativeAbility(), this)
+        .multiThreadAccelerate(animaxMultiThreadEnabled)
+        .build();
+    AnimaXView view = new AnimaXView(animaxContext);
     view.setObjectFit(ObjectFit.CONTAIN);
     view.setAutoPlay(true);
     view.setLoop(true);
@@ -325,6 +354,7 @@ public final class BenchmarkActivity extends Activity {
     String mainFps = formatFps(mainThreadFps);
     if (ENGINE_ANIMAX.equals(engine)) {
       fpsView.setText("Engine: AnimaX  Count: x" + count
+          + "\nMulti thread: " + (animaxMultiThreadEnabled ? "enabled" : "disabled")
           + "\nAssets: " + assetSummary(count)
           + "\nMain thread FPS: " + mainFps
           + "\nAnimaX GPU FPS: " + formatFps(animaxGpuFps));
@@ -403,6 +433,15 @@ public final class BenchmarkActivity extends Activity {
       }
     }
     return 1;
+  }
+
+  private void updateAnimaxMultiThreadVisibility() {
+    if (animaxMultiThreadCheckBox == null) {
+      return;
+    }
+    boolean animaxSelected = ENGINE_ANIMAX.equals(selectedEngine);
+    animaxMultiThreadCheckBox.setVisibility(animaxSelected ? View.VISIBLE : View.GONE);
+    animaxMultiThreadCheckBox.setEnabled(animaxSelected);
   }
 
   private GridSpec gridSpecFor(int count, int stageWidth, int stageHeight) {
