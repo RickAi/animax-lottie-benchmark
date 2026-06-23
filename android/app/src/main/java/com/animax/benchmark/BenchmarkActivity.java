@@ -38,9 +38,10 @@ public final class BenchmarkActivity extends Activity {
   private static final String ENGINE_ANIMAX = "animax";
   private static final String ENGINE_LOTTIE = "lottie";
   private static final String DEFAULT_MANIFEST = "manifest.json";
-  private static final int[] COUNTS = {1, 5, 10, 20};
+  private static final int[] COUNTS = {1, 5, 10, 20, 40, 60};
   private static final int MAX_COLUMNS = 4;
   private static final int MAX_ROWS = 5;
+  private static final int MIN_UNIQUE_CASES = MAX_COLUMNS * MAX_ROWS;
   private static final long ANIMAX_FPS_INTERVAL_MS = 1000L;
 
   private final MainThreadFpsMonitor mainThreadFpsMonitor = new MainThreadFpsMonitor();
@@ -68,7 +69,8 @@ public final class BenchmarkActivity extends Activity {
     super.onCreate(savedInstanceState);
     try {
       loadCaseAssets();
-      assetStatus = "Loaded " + caseAssetPaths.size() + " unique local assets.";
+      assetStatus = "Loaded " + caseAssetPaths.size()
+          + " local assets. High-count scenes repeat assets.";
     } catch (Exception e) {
       assetStatus = "Failed to load local assets: " + e.getMessage();
     }
@@ -114,7 +116,7 @@ public final class BenchmarkActivity extends Activity {
         ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
 
     TextView subtitle = new TextView(this);
-    subtitle.setText("Each instance uses a different local JSON asset.\nChoose one engine, then choose a render count.");
+    subtitle.setText("Local JSON assets are repeated when count exceeds the manifest size.\nChoose one engine, then choose a render count.");
     subtitle.setTextSize(14);
     subtitle.setTextColor(0xff666666);
     root.addView(subtitle, new LinearLayout.LayoutParams(
@@ -152,7 +154,7 @@ public final class BenchmarkActivity extends Activity {
       button.setText("x" + count);
       button.setTextSize(18);
       button.setAllCaps(false);
-      button.setEnabled(caseAssetPaths.size() >= count);
+      button.setEnabled(!caseAssetPaths.isEmpty());
       button.setOnClickListener(v -> showScene(selectedEngine, count));
       LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
           ViewGroup.LayoutParams.MATCH_PARENT, dp(64));
@@ -181,9 +183,8 @@ public final class BenchmarkActivity extends Activity {
   }
 
   private void showScene(String engine, int count) {
-    if (caseAssetPaths.size() < count) {
-      assetStatus = "Need at least " + count + " unique local assets, but only found "
-          + caseAssetPaths.size() + ".";
+    if (caseAssetPaths.isEmpty()) {
+      assetStatus = "No local Lottie assets were loaded.";
       showHome();
       return;
     }
@@ -249,23 +250,19 @@ public final class BenchmarkActivity extends Activity {
       return;
     }
     GridLayout grid = new GridLayout(this);
-    int columns = Math.min(MAX_COLUMNS, count);
-    int rows = (int) Math.ceil(count / (float) columns);
-    int tileSize = Math.max(dp(48), Math.min(
-        stage.getWidth() / MAX_COLUMNS,
-        stage.getHeight() / MAX_ROWS));
-    grid.setColumnCount(columns);
-    grid.setRowCount(rows);
+    GridSpec spec = gridSpecFor(count, stage.getWidth(), stage.getHeight());
+    grid.setColumnCount(spec.columns);
+    grid.setRowCount(spec.rows);
     grid.setClipChildren(true);
     grid.setClipToPadding(true);
     FrameLayout.LayoutParams gridParams = new FrameLayout.LayoutParams(
-        columns * tileSize,
-        rows * tileSize,
+        spec.width,
+        spec.height,
         Gravity.CENTER);
     stage.addView(grid, gridParams);
 
     for (int i = 0; i < count; i++) {
-      String assetPath = caseAssetPaths.get(i);
+      String assetPath = caseAssetPaths.get(i % caseAssetPaths.size());
       View animationView = ENGINE_ANIMAX.equals(engine)
           ? createAnimaxView(i, assetPath)
           : createLottieView(assetPath);
@@ -277,8 +274,8 @@ public final class BenchmarkActivity extends Activity {
           ViewGroup.LayoutParams.MATCH_PARENT,
           Gravity.CENTER));
       GridLayout.LayoutParams params = new GridLayout.LayoutParams();
-      params.width = tileSize;
-      params.height = tileSize;
+      params.width = spec.tileWidth;
+      params.height = spec.tileHeight;
       params.setMargins(0, 0, 0, 0);
       grid.addView(tile, params);
     }
@@ -328,12 +325,12 @@ public final class BenchmarkActivity extends Activity {
     String mainFps = formatFps(mainThreadFps);
     if (ENGINE_ANIMAX.equals(engine)) {
       fpsView.setText("Engine: AnimaX  Count: x" + count
-          + "\nUnique assets: " + count
+          + "\nAssets: " + assetSummary(count)
           + "\nMain thread FPS: " + mainFps
           + "\nAnimaX GPU FPS: " + formatFps(animaxGpuFps));
     } else {
       fpsView.setText("Engine: Lottie  Count: x" + count
-          + "\nUnique assets: " + count
+          + "\nAssets: " + assetSummary(count)
           + "\nMain thread FPS: " + mainFps);
     }
   }
@@ -372,8 +369,8 @@ public final class BenchmarkActivity extends Activity {
         caseAssetPaths.add(file);
       }
     }
-    if (caseAssetPaths.size() < COUNTS[COUNTS.length - 1]) {
-      throw new IOException("manifest has fewer than " + COUNTS[COUNTS.length - 1]
+    if (caseAssetPaths.size() < MIN_UNIQUE_CASES) {
+      throw new IOException("manifest has fewer than " + MIN_UNIQUE_CASES
           + " unique case files");
     }
   }
@@ -408,6 +405,53 @@ public final class BenchmarkActivity extends Activity {
     return 1;
   }
 
+  private GridSpec gridSpecFor(int count, int stageWidth, int stageHeight) {
+    if (count <= MIN_UNIQUE_CASES) {
+      int columns = Math.min(MAX_COLUMNS, count);
+      int rows = (int) Math.ceil(count / (float) columns);
+      int tileSize = Math.max(dp(48), Math.min(
+          stageWidth / MAX_COLUMNS,
+          stageHeight / MAX_ROWS));
+      return new GridSpec(columns, rows, columns * tileSize, rows * tileSize, tileSize, tileSize);
+    }
+
+    int bestColumns = 1;
+    int bestRows = count;
+    float bestScore = Float.NEGATIVE_INFINITY;
+    for (int columns = 1; columns <= count; columns++) {
+      int rows = (int) Math.ceil(count / (float) columns);
+      int emptySlots = columns * rows - count;
+      float tileWidth = stageWidth / (float) columns;
+      float tileHeight = stageHeight / (float) rows;
+      float score = Math.min(tileWidth, tileHeight) - emptySlots * 1000f;
+      if (score > bestScore) {
+        bestScore = score;
+        bestColumns = columns;
+        bestRows = rows;
+      }
+    }
+    int tileWidth = Math.max(1, stageWidth / bestColumns);
+    int tileHeight = Math.max(1, stageHeight / bestRows);
+    return new GridSpec(
+        bestColumns,
+        bestRows,
+        tileWidth * bestColumns,
+        tileHeight * bestRows,
+        tileWidth,
+        tileHeight);
+  }
+
+  private String assetSummary(int count) {
+    int localAssetCount = caseAssetPaths.size();
+    if (localAssetCount == 0) {
+      return "--";
+    }
+    if (count <= localAssetCount) {
+      return count + " unique local JSON";
+    }
+    return localAssetCount + " local JSON, repeated to " + count;
+  }
+
   private static String engineLabel(String engine) {
     return ENGINE_LOTTIE.equals(engine) ? "Lottie" : "AnimaX";
   }
@@ -433,6 +477,24 @@ public final class BenchmarkActivity extends Activity {
 
   private int dp(int value) {
     return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+  }
+
+  private static final class GridSpec {
+    final int columns;
+    final int rows;
+    final int width;
+    final int height;
+    final int tileWidth;
+    final int tileHeight;
+
+    GridSpec(int columns, int rows, int width, int height, int tileWidth, int tileHeight) {
+      this.columns = columns;
+      this.rows = rows;
+      this.width = width;
+      this.height = height;
+      this.tileWidth = tileWidth;
+      this.tileHeight = tileHeight;
+    }
   }
 
   private static final class MainThreadFpsMonitor implements Choreographer.FrameCallback {

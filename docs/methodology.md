@@ -6,12 +6,12 @@ This repo separates case orchestration from performance measurement.
 
 The Android app runs a manual multi-instance FPS scenario:
 
-- x1, x5, x10, and x20 render-count buttons.
+- x1, x5, x10, x20, x40, and x60 render-count buttons.
 - One selected engine at a time: AnimaX or Lottie.
 - Local-only animation assets loaded from the APK.
 - Autoplay and loop enabled for every instance.
-- Every instance in a scene uses a different local JSON file selected from the manifest; x20 therefore requires at least 20 unique local cases.
-- A fixed tile size derived from the x20 grid, so the x20 scene fills the available width/height without overflow while smaller scenes change only the instance count.
+- x1/x5/x10/x20 use different local JSON files selected from the manifest.
+- x40/x60 repeat local JSON files and shrink tiles with dynamic grids so the stage is filled without overflow.
 - Main-thread FPS sampled with `Choreographer`.
 - AnimaX GPU/offscreen FPS sampled through `AnimationListenerAdapter.onFPS` after `setFpsEventInterval(1000)`.
 

@@ -13,11 +13,11 @@ The repository is intentionally client-only:
 
 The checked-in Android app focuses on steady-state multi-instance rendering:
 
-- Show a home screen with x1, x5, x10, and x20 render-count buttons.
+- Show a home screen with x1, x5, x10, x20, x40, and x60 render-count buttons.
 - Let the user choose AnimaX or Lottie with checkboxes.
 - Open a dedicated render page where all animations autoplay and loop.
-- Keep each animation tile at a fixed size derived from the x20 grid, so count changes increase instance count instead of resizing each instance.
-- Use a different local Lottie JSON for every animation instance in each x1/x5/x10/x20 scene.
+- Keep x1/x5/x10/x20 on the fixed x20-derived grid, and shrink x40/x60 tiles with dynamic grids that fill the stage.
+- Use different local Lottie JSON files for x1/x5/x10/x20, then repeat local files for x40/x60 pressure cases.
 - Show main-thread FPS for both engines.
 - Show AnimaX GPU/offscreen FPS from `AnimationListenerAdapter.onFPS` after setting `setFpsEventInterval(1000)`.
 
@@ -35,7 +35,7 @@ Collect memory, CPU, frame interval, and latency metrics from PC-side tooling su
 
 ## Cases
 
-The default case manifest is [assets/manifest.json](assets/manifest.json). It currently uses 20 Apache-2.0 sample files from the official Airbnb Lottie Android/iOS repositories. The Android xN runner takes the first N unique files from this manifest, so no animation instance in a scene reuses the same JSON asset.
+The default case manifest is [assets/manifest.json](assets/manifest.json). It currently uses 20 Apache-2.0 sample files from the official Airbnb Lottie Android/iOS repositories. The Android x1/x5/x10/x20 scenes use unique files from this manifest. The x40 and x60 scenes repeat the same local files to build higher instance-count pressure cases.
 
 - `hamburger_arrow`: small path morph.
 - `lottie_logo_2`: complex logo, many layers.
@@ -71,7 +71,7 @@ adb install -r app/build/outputs/apk/noasan/debug/app-noasan-debug.apk
 Launch an Android scene from the command line:
 
 ```sh
-../scripts/android_run.sh --engine animax --count 20
+../scripts/android_run.sh --engine animax --count 60
 ```
 
 The Android Lottie dependency defaults to `com.airbnb.android:lottie:6.7.1`, verified from Maven Central.

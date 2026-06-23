@@ -14,7 +14,7 @@ Usage: $0 [options]
 
 Options:
   --engine NAME   animax or lottie. Default: animax.
-  --count N       1, 5, 10, or 20. Default: 1.
+  --count N       1, 5, 10, 20, 40, or 60. Default: 1.
   --home          Launch the home screen instead of a scene.
   --build-only    Build APK but do not install/run.
 EOF
@@ -36,8 +36,8 @@ if [[ "$ENGINE" != "animax" && "$ENGINE" != "lottie" ]]; then
   exit 1
 fi
 
-if [[ "$COUNT" != "1" && "$COUNT" != "5" && "$COUNT" != "10" && "$COUNT" != "20" ]]; then
-  echo "--count must be 1, 5, 10, or 20" >&2
+if [[ "$COUNT" != "1" && "$COUNT" != "5" && "$COUNT" != "10" && "$COUNT" != "20" && "$COUNT" != "40" && "$COUNT" != "60" ]]; then
+  echo "--count must be 1, 5, 10, 20, 40, or 60" >&2
   exit 1
 fi
 
