@@ -56,7 +56,6 @@ public final class BenchmarkActivity extends Activity {
   private CheckBox animaxCheckBox;
   private CheckBox lottieCheckBox;
   private CheckBox animaxMultiThreadCheckBox;
-  private TextView homeStatus;
   private TextView fpsView;
   private FrameLayout stage;
   private String selectedEngine = ENGINE_ANIMAX;
@@ -120,13 +119,6 @@ public final class BenchmarkActivity extends Activity {
     root.addView(title, new LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
 
-    TextView subtitle = new TextView(this);
-    subtitle.setText("Local JSON assets are repeated when count exceeds the manifest size.\nChoose one engine, then choose a render count.");
-    subtitle.setTextSize(14);
-    subtitle.setTextColor(0xff666666);
-    root.addView(subtitle, new LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
-
     LinearLayout engineRow = new LinearLayout(this);
     engineRow.setOrientation(LinearLayout.HORIZONTAL);
     engineRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -160,7 +152,7 @@ public final class BenchmarkActivity extends Activity {
 
     LinearLayout buttonGrid = new LinearLayout(this);
     buttonGrid.setOrientation(LinearLayout.VERTICAL);
-    buttonGrid.setGravity(Gravity.CENTER);
+    buttonGrid.setGravity(Gravity.TOP);
     root.addView(buttonGrid, new LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -168,8 +160,8 @@ public final class BenchmarkActivity extends Activity {
       LinearLayout row = new LinearLayout(this);
       row.setOrientation(LinearLayout.HORIZONTAL);
       LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-          ViewGroup.LayoutParams.MATCH_PARENT, dp(72));
-      rowParams.setMargins(0, dp(4), 0, dp(4));
+          ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+      rowParams.setMargins(0, dp(6), 0, dp(6));
       buttonGrid.addView(row, rowParams);
 
       for (int j = i; j < i + 2 && j < COUNTS.length; j++) {
@@ -186,13 +178,6 @@ public final class BenchmarkActivity extends Activity {
         row.addView(button, params);
       }
     }
-
-    homeStatus = new TextView(this);
-    homeStatus.setTextSize(13);
-    homeStatus.setTextColor(0xff777777);
-    homeStatus.setText(assetStatus + " Memory is intentionally measured from host-side tooling.");
-    root.addView(homeStatus, new LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
 
     setContentView(root);
   }
