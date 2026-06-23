@@ -47,7 +47,7 @@ The default case manifest is [assets/manifest.json](assets/manifest.json). It cu
 - `text_animated_properties`: text animation.
 - `shadow_effect_animated`: effect/shadow coverage.
 - `motion_corpse`: large-canvas motion sample.
-- `nine_squares_al_boardman`, `boat_loader`, `icon_transitions`, `lottie_logo_1`, `lottie_logo_1_masked`, `switch`, `switch_states`, `twitter_heart_button`, `watermelon`, and `success`: additional official Lottie iOS samples used to make the x20 multi-instance scene non-repeating.
+- `nine_squares_al_boardman`, `boat_loader`, `icon_transitions`, `shape_types`, `repeater`, `switch`, `trim_paths`, `laugh4`, `watermelon`, and `success`: additional official Lottie samples used to make the x20 multi-instance scene non-repeating and visually distinct.
 
 See [assets/README.md](assets/README.md) for provenance and license notes.
 

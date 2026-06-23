@@ -120,21 +120,21 @@
       "license": "Apache-2.0"
     },
     {
-      "id": "lottie_logo_1",
-      "file": "lotties/lottie_logo_1.json",
-      "category": "complex",
-      "features": ["many_layers", "logo"],
-      "source": "airbnb/lottie-ios Tests/Samples/LottieLogo1.json",
-      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "id": "shape_types",
+      "file": "lotties/shape_types.json",
+      "category": "feature",
+      "features": ["shape", "ellipse", "polygon", "star"],
+      "source": "airbnb/lottie-android snapshot-tests/src/main/assets/Tests/ShapeTypes.json",
+      "source_commit": "05ea92e90381eb8a8ae06855ea2b74f322bebbec",
       "license": "Apache-2.0"
     },
     {
-      "id": "lottie_logo_1_masked",
-      "file": "lotties/lottie_logo_1_masked.json",
-      "category": "complex",
-      "features": ["many_layers", "mask", "logo"],
-      "source": "airbnb/lottie-ios Tests/Samples/LottieLogo1_masked.json",
-      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "id": "repeater",
+      "file": "lotties/repeater.json",
+      "category": "feature",
+      "features": ["shape", "repeater"],
+      "source": "airbnb/lottie-android snapshot-tests/src/main/assets/Tests/Repeater.json",
+      "source_commit": "05ea92e90381eb8a8ae06855ea2b74f322bebbec",
       "license": "Apache-2.0"
     },
     {
@@ -147,21 +147,21 @@
       "license": "Apache-2.0"
     },
     {
-      "id": "switch_states",
-      "file": "lotties/switch_states.json",
-      "category": "control",
-      "features": ["shape", "state_transition"],
-      "source": "airbnb/lottie-ios Tests/Samples/Switch_States.json",
-      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "id": "trim_paths",
+      "file": "lotties/trim_paths.json",
+      "category": "feature",
+      "features": ["shape", "trim_path"],
+      "source": "airbnb/lottie-android snapshot-tests/src/main/assets/Tests/TrimPaths.json",
+      "source_commit": "05ea92e90381eb8a8ae06855ea2b74f322bebbec",
       "license": "Apache-2.0"
     },
     {
-      "id": "twitter_heart_button",
-      "file": "lotties/twitter_heart_button.json",
-      "category": "icon",
-      "features": ["shape", "burst", "button"],
-      "source": "airbnb/lottie-ios Tests/Samples/TwitterHeartButton.json",
-      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "id": "laugh4",
+      "file": "lotties/laugh4.json",
+      "category": "character",
+      "features": ["shape", "face"],
+      "source": "airbnb/lottie-android snapshot-tests/src/main/assets/Tests/Laugh4.json",
+      "source_commit": "05ea92e90381eb8a8ae06855ea2b74f322bebbec",
       "license": "Apache-2.0"
     },
     {
