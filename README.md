@@ -47,9 +47,9 @@ See [assets/README.md](assets/README.md) for provenance and license notes.
    scripts/bootstrap_deps.sh
    ```
 
-   Use JDK 11 for Android builds. AnimaX currently uses Gradle 6.7.1 and Android Gradle Plugin 4.1.0, which do not run under JDK 17.
+   The Android benchmark project uses Gradle 8.10.2, Android Gradle Plugin 8.8.2, and compile SDK 35 so current Android Studio builds can sync with modern JDKs. Use JDK 17 or newer for command-line builds.
 
-2. Build and install the Android app:
+2. Build and install the Android app. The native AnimaX build still requires `scripts/bootstrap_deps.sh` to have completed first:
 
    ```sh
    cd android

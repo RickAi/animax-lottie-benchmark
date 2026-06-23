@@ -1,7 +1,6 @@
 buildscript {
     ext {
-        kotlin_version = '1.5.32'
-        compileSdkVersion = 30
+        compileSdkVersion = 35
         ndkVersion = '21.1.6352462'
         abiList = project.hasProperty('abiList')
                 ? project.property('abiList').split(',').collect { it.trim() }.findAll { it }
@@ -21,15 +20,14 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:4.1.0'
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath 'com.android.tools.build:gradle:8.8.2'
         classpath 'com.googlecode.json-simple:json-simple:1.1.1'
     }
 }
 
 def dependencyVersionsFile = new File(rootProject.ext.animaxDir, "versions.properties")
 if (!dependencyVersionsFile.isFile()) {
-    throw new GradleException("Missing versions.properties in ${rootProject.ext.animaxDir}. Run scripts/bootstrap_deps.sh from the repository root.")
+    throw new GradleException("Missing third_party/animax/versions.properties. Run scripts/bootstrap_deps.sh from the repository root.")
 }
 def dependencyVersions = new Properties()
 dependencyVersionsFile.withInputStream { dependencyVersions.load(it) }
@@ -39,9 +37,12 @@ dependencyVersionsFile.withInputStream { dependencyVersions.load(it) }
     }
 }
 
-def animaxToolsDir = new File(rootProject.ext.animaxDir, "tools_shared")
-if (!animaxToolsDir.isDirectory()) {
-    throw new GradleException("Missing AnimaX generated tools in ${rootProject.ext.animaxDir}. Run scripts/bootstrap_deps.sh from the repository root.")
+ext.animaxToolsDir = new File(rootProject.ext.animaxDir, "tools_shared")
+ext.animaxToolsReady = { rootProject.ext.animaxToolsDir.isDirectory() }
+ext.requireAnimaxTools = {
+    if (!rootProject.ext.animaxToolsReady()) {
+        throw new GradleException("Missing AnimaX generated tools under third_party/animax. Run scripts/bootstrap_deps.sh from the repository root before building native targets.")
+    }
 }
 
 allprojects {
@@ -68,6 +69,16 @@ ext.getCppLib = {
     return 'c++_static'
 }
 
+subprojects { subproject ->
+    subproject.plugins.withId('com.android.library') {
+        def namespaces = [
+                ':AnimaXAndroid': 'com.lynx.animax',
+                ':AnimaXTextra' : 'com.lynx.animax.textra'
+        ]
+        subproject.android.namespace = namespaces.get(subproject.path, "com.animax.benchmark.${subproject.name.toLowerCase().replace('-', '.')}")
+    }
+}
+
 ext.getFlavorNamesAndBuildTypes = { Project project ->
     def flavorNames = []
     def buildTypes = []
@@ -91,6 +102,11 @@ ext.getFlavorNamesAndBuildTypes = { Project project ->
 }
 
 ext.writeGnArgs = { String gnArgs ->
+    if (!rootProject.ext.animaxToolsReady()) {
+        logger.lifecycle("Skipping AnimaX GN args generation during Gradle configuration because tools_shared is missing. Run scripts/bootstrap_deps.sh before building.")
+        return
+    }
+
     def parsedGnArgs = new groovy.json.JsonSlurper().parseText(gnArgs)
     parsedGnArgs.each { variantName, args ->
         if (variantName.toString().toLowerCase().contains('debug') && args instanceof Map && args.containsKey('is_debug')) {
@@ -107,7 +123,14 @@ ext.writeGnArgs = { String gnArgs ->
     }
 }
 
+task ensureAnimaxTools {
+    doLast {
+        rootProject.ext.requireAnimaxTools()
+    }
+}
+
 task generateAllGnCmakeTargets {
+    dependsOn ensureAnimaxTools
     evaluationDependsOnChildren()
     rootProject.allprojects { Project project ->
         if (project.tasks.findByName('configGnCompileParas')) {
@@ -124,6 +147,9 @@ task generateAllGnCmakeTargets {
 
 gradle.projectsEvaluated {
     rootProject.allprojects { Project project ->
+        project.tasks.matching { it.name == 'preBuild' }.configureEach {
+            dependsOn rootProject.ensureAnimaxTools
+        }
         project.tasks.matching {
             it.name.startsWith('generateJsonModel') || it.name.startsWith('externalNativeBuild')
         }.all {

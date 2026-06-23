@@ -45,9 +45,9 @@ if [[ ! -d "$ANIMAX_DIR/platform/android/animax_android" || ! -d "$ANIMAX_DIR/to
 fi
 
 java_major="$(java -version 2>&1 | awk -F[\".] '/version/ {print $2; exit}')"
-if [[ "$java_major" != "11" ]]; then
-  echo "Android benchmark uses AnimaX's Gradle 6.7.1/AGP 4.1 stack and requires JDK 11. Current java major: ${java_major:-unknown}" >&2
-  echo "Set JAVA_HOME to a JDK 11 installation before running this script." >&2
+if [[ -z "$java_major" || "$java_major" -lt 17 ]]; then
+  echo "Android benchmark requires JDK 17 or newer for Gradle 8.10.2/AGP 8.8.2. Current java major: ${java_major:-unknown}" >&2
+  echo "Set JAVA_HOME to a JDK 17+ installation before running this script." >&2
   exit 1
 fi
 

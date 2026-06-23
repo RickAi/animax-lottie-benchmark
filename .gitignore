@@ -4,6 +4,8 @@ results/
 .bundle/
 
 android/.gradle/
+android/.idea/
+android/local.properties
 android/**/build/
 
 ios/**/build/
