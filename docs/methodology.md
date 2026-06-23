@@ -2,9 +2,23 @@
 
 This repo separates case orchestration from performance measurement.
 
-## In-App Case Runner
+## Android In-App FPS Runner
 
-The checked-in Android and iOS apps run the same local Lottie JSON cases and export the same case-run schema. The apps are responsible for:
+The Android app runs a manual multi-instance FPS scenario:
+
+- x1, x5, x10, and x20 render-count buttons.
+- One selected engine at a time: AnimaX or Lottie.
+- Local-only animation assets loaded from the APK.
+- Autoplay and loop enabled for every instance.
+- A fixed tile size derived from the x20 grid, so the x20 scene fills the available width/height without overflow while smaller scenes change only the instance count.
+- Main-thread FPS sampled with `Choreographer`.
+- AnimaX GPU/offscreen FPS sampled through `AnimationListenerAdapter.onFPS` after `setFpsEventInterval(1000)`.
+
+Memory is measured from host-side tooling, not in the app.
+
+## iOS In-App Case Runner
+
+The checked-in iOS app runs the local Lottie JSON cases and exports the case-run schema. The app is responsible for:
 
 - Loading the manifest and bundled case assets.
 - Constructing the requested engine view.
@@ -14,16 +28,7 @@ The checked-in Android and iOS apps run the same local Lottie JSON cases and exp
 
 The apps do not collect FPS, frame intervals, jank, dropped frames, CPU time, memory, heap, resident size, or engine memory internally. Those values should come from platform tooling on the host machine.
 
-## Profiler Alignment Markers
-
-Android emits `Trace` sections/events so Perfetto, Android Studio Profiler, and Macrobenchmark can align profiler data with app phases:
-
-- `bench_case_setup`
-- `bench_create_view`
-- `bench_read_asset`
-- `bench_set_animation`
-- `bench_composition_ready`
-- `bench_first_frame`
+## iOS Profiler Alignment Markers
 
 iOS emits `os_signpost` markers for Instruments and XCTest signpost metrics:
 

@@ -2,351 +2,349 @@ package com.animax.benchmark;
 
 import android.animation.ValueAnimator;
 import android.app.Activity;
-import android.content.Intent;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.Trace;
 import android.view.Gravity;
+import android.view.Choreographer;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.FrameLayout;
+import android.widget.GridLayout;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import com.airbnb.lottie.LottieAnimationView;
 import com.airbnb.lottie.RenderMode;
-import com.lynx.animax.listener.AnimaXParam;
+import com.lynx.animax.listener.AnimaXFPSParam;
 import com.lynx.animax.listener.AnimationListenerAdapter;
 import com.lynx.animax.ui.AnimaXView;
 import com.lynx.animax.ui.ObjectFit;
 import com.lynx.animax.util.UriUtil;
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
 
 public final class BenchmarkActivity extends Activity {
-  private static final String TAG = "AnimaXBench";
+  private static final String ENGINE_ANIMAX = "animax";
+  private static final String ENGINE_LOTTIE = "lottie";
+  private static final String DEFAULT_ASSET = "lotties/lottie_logo_2.json";
+  private static final int[] COUNTS = {1, 5, 10, 20};
+  private static final int MAX_COLUMNS = 4;
+  private static final int MAX_ROWS = 5;
+  private static final long ANIMAX_FPS_INTERVAL_MS = 1000L;
 
-  private final Handler handler = new Handler(Looper.getMainLooper());
-  private final List<CaseSpec> cases = new ArrayList<>();
-  private JSONArray caseRuns = new JSONArray();
+  private final MainThreadFpsMonitor mainThreadFpsMonitor = new MainThreadFpsMonitor();
+  private final List<AnimaXView> animaxViews = new ArrayList<>();
+  private final List<AnimationListenerAdapter> animaxListeners = new ArrayList<>();
+  private final List<LottieAnimationView> lottieViews = new ArrayList<>();
+  private final List<Float> animaxGpuFpsValues = new ArrayList<>();
 
+  private CheckBox animaxCheckBox;
+  private CheckBox lottieCheckBox;
+  private TextView homeStatus;
+  private TextView fpsView;
   private FrameLayout stage;
-  private TextView status;
-  private Button runButton;
-  private String runId;
-  private int iterations;
-  private long caseDurationMs;
-  private String requestedEngine;
-  private File latestJson;
-  private boolean running;
+  private String selectedEngine = ENGINE_ANIMAX;
+  private String assetPath = DEFAULT_ASSET;
+  private String currentSceneEngine = ENGINE_ANIMAX;
+  private int currentSceneCount = 1;
+  private boolean showingScene;
+  private float mainThreadFps;
+  private float animaxGpuFps;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
-    readConfig(getIntent());
-    setupUi();
-    try {
-      loadCases();
-      setStatus("Loaded " + cases.size() + " cases. Tap Run or start with --ez autorun true.");
-    } catch (Exception e) {
-      setStatus("Failed to load cases: " + e.getMessage());
+    if (getIntent().getStringExtra("asset") != null) {
+      assetPath = getIntent().getStringExtra("asset");
     }
+    showHome();
     if (getIntent().getBooleanExtra("autorun", false)) {
-      handler.postDelayed(this::startBenchmark, 600);
+      String engine = getIntent().getStringExtra("engine");
+      int count = getIntent().getIntExtra("count", 1);
+      if (ENGINE_LOTTIE.equalsIgnoreCase(engine)) {
+        selectedEngine = ENGINE_LOTTIE;
+      }
+      showScene(selectedEngine, normalizeCount(count));
     }
   }
 
-  private void readConfig(Intent intent) {
-    iterations = intent.getIntExtra("iterations", 3);
-    caseDurationMs = intent.getLongExtra("caseDurationMs", 10000L);
-    requestedEngine = intent.getStringExtra("engine");
-    if (requestedEngine == null || requestedEngine.length() == 0) {
-      requestedEngine = "all";
-    }
-    runId = new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date());
+  @Override
+  protected void onDestroy() {
+    releaseScene();
+    super.onDestroy();
   }
 
-  private void setupUi() {
+  @Override
+  public void onBackPressed() {
+    if (showingScene) {
+      releaseScene();
+      showHome();
+      return;
+    }
+    super.onBackPressed();
+  }
+
+  private void showHome() {
+    showingScene = false;
     LinearLayout root = new LinearLayout(this);
     root.setOrientation(LinearLayout.VERTICAL);
-    root.setPadding(dp(16), dp(16), dp(16), dp(16));
+    root.setPadding(dp(20), dp(24), dp(20), dp(20));
+    root.setBackgroundColor(0xfffafafa);
 
     TextView title = new TextView(this);
-    title.setText("AnimaX vs Lottie Case Runner");
-    title.setTextSize(20);
-    title.setGravity(Gravity.CENTER_VERTICAL);
+    title.setText("AnimaX vs Lottie FPS Benchmark");
+    title.setTextSize(24);
+    title.setTextColor(0xff444444);
     root.addView(title, new LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT, dp(36)));
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
 
-    stage = new FrameLayout(this);
-    stage.setBackgroundColor(0xfff5f5f5);
-    root.addView(stage, new LinearLayout.LayoutParams(
+    TextView subtitle = new TextView(this);
+    subtitle.setText("Asset: " + assetPath + "\nChoose one engine, then choose a render count.");
+    subtitle.setTextSize(14);
+    subtitle.setTextColor(0xff666666);
+    root.addView(subtitle, new LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
+
+    LinearLayout engineRow = new LinearLayout(this);
+    engineRow.setOrientation(LinearLayout.HORIZONTAL);
+    engineRow.setGravity(Gravity.CENTER_VERTICAL);
+    root.addView(engineRow, new LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(56)));
+
+    animaxCheckBox = new CheckBox(this);
+    animaxCheckBox.setText("AnimaX");
+    animaxCheckBox.setTextSize(16);
+    animaxCheckBox.setChecked(ENGINE_ANIMAX.equals(selectedEngine));
+    engineRow.addView(animaxCheckBox, new LinearLayout.LayoutParams(0, dp(48), 1f));
+
+    lottieCheckBox = new CheckBox(this);
+    lottieCheckBox.setText("Lottie");
+    lottieCheckBox.setTextSize(16);
+    lottieCheckBox.setChecked(ENGINE_LOTTIE.equals(selectedEngine));
+    engineRow.addView(lottieCheckBox, new LinearLayout.LayoutParams(0, dp(48), 1f));
+
+    animaxCheckBox.setOnClickListener(v -> selectEngine(ENGINE_ANIMAX));
+    lottieCheckBox.setOnClickListener(v -> selectEngine(ENGINE_LOTTIE));
+
+    LinearLayout buttonColumn = new LinearLayout(this);
+    buttonColumn.setOrientation(LinearLayout.VERTICAL);
+    buttonColumn.setGravity(Gravity.CENTER);
+    root.addView(buttonColumn, new LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-    runButton = new Button(this);
-    runButton.setText("Run cases");
-    runButton.setOnClickListener(v -> startBenchmark());
-    root.addView(runButton, new LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+    for (int count : COUNTS) {
+      Button button = new Button(this);
+      button.setText("x" + count);
+      button.setTextSize(18);
+      button.setAllCaps(false);
+      button.setOnClickListener(v -> showScene(selectedEngine, count));
+      LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+          ViewGroup.LayoutParams.MATCH_PARENT, dp(64));
+      params.setMargins(0, dp(8), 0, dp(8));
+      buttonColumn.addView(button, params);
+    }
 
-    ScrollView scroll = new ScrollView(this);
-    status = new TextView(this);
-    status.setTextSize(12);
-    status.setTextIsSelectable(true);
-    scroll.addView(status);
-    root.addView(scroll, new LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT, dp(160)));
+    homeStatus = new TextView(this);
+    homeStatus.setTextSize(13);
+    homeStatus.setTextColor(0xff777777);
+    homeStatus.setText("Memory is intentionally measured from host-side tooling.");
+    root.addView(homeStatus, new LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
 
     setContentView(root);
   }
 
-  private void loadCases() throws IOException, JSONException {
-    String manifest = readAsset("manifest.json");
-    JSONArray array = new JSONObject(manifest).getJSONArray("cases");
-    cases.clear();
-    String onlyCase = getIntent().getStringExtra("case");
-    for (int i = 0; i < array.length(); i++) {
-      JSONObject item = array.getJSONObject(i);
-      CaseSpec spec = new CaseSpec(
-          item.getString("id"),
-          item.getString("file"),
-          item.optString("category", ""),
-          item.optJSONArray("features"));
-      if (onlyCase == null || onlyCase.equals(spec.id)) {
-        cases.add(spec);
-      }
+  private void selectEngine(String engine) {
+    selectedEngine = engine;
+    if (animaxCheckBox != null) {
+      animaxCheckBox.setChecked(ENGINE_ANIMAX.equals(engine));
     }
-    if (cases.isEmpty()) {
-      throw new IOException("No benchmark cases matched");
+    if (lottieCheckBox != null) {
+      lottieCheckBox.setChecked(ENGINE_LOTTIE.equals(engine));
     }
   }
 
-  private void startBenchmark() {
-    if (running) {
-      return;
-    }
-    running = true;
-    runButton.setEnabled(false);
-    caseRuns = new JSONArray();
-    setStatus("Run " + runId + " started. iterations=" + iterations
-        + " caseDurationMs=" + caseDurationMs
-        + " engine=" + requestedEngine);
-    runNext(0, 0, 0);
+  private void showScene(String engine, int count) {
+    releaseScene();
+    showingScene = true;
+    selectedEngine = engine;
+    currentSceneEngine = engine;
+    currentSceneCount = count;
+    mainThreadFps = 0f;
+    animaxGpuFps = 0f;
+
+    LinearLayout root = new LinearLayout(this);
+    root.setOrientation(LinearLayout.VERTICAL);
+    root.setBackgroundColor(0xff111111);
+
+    LinearLayout header = new LinearLayout(this);
+    header.setOrientation(LinearLayout.HORIZONTAL);
+    header.setGravity(Gravity.CENTER_VERTICAL);
+    header.setPadding(dp(12), dp(8), dp(12), dp(8));
+    root.addView(header, new LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(60)));
+
+    Button back = new Button(this);
+    back.setText("Back");
+    back.setAllCaps(false);
+    back.setOnClickListener(v -> onBackPressed());
+    header.addView(back, new LinearLayout.LayoutParams(dp(92), dp(44)));
+
+    TextView title = new TextView(this);
+    title.setText(engineLabel(engine) + " x" + count);
+    title.setGravity(Gravity.CENTER_VERTICAL);
+    title.setTextColor(0xffffffff);
+    title.setTextSize(20);
+    LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, dp(44), 1f);
+    titleParams.setMargins(dp(12), 0, 0, 0);
+    header.addView(title, titleParams);
+
+    fpsView = new TextView(this);
+    fpsView.setTextColor(0xffe6e6e6);
+    fpsView.setTextSize(15);
+    fpsView.setPadding(dp(16), dp(8), dp(16), dp(8));
+    fpsView.setBackgroundColor(0xff222222);
+    root.addView(fpsView, new LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(78)));
+
+    stage = new FrameLayout(this);
+    stage.setBackgroundColor(0xfff4f4f4);
+    root.addView(stage, new LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+    setContentView(root);
+    updateFpsText(engine, count);
+    mainThreadFpsMonitor.start(fps -> {
+      mainThreadFps = fps;
+      updateFpsText(engine, count);
+    });
+
+    stage.post(() -> populateStage(engine, count));
   }
 
-  private void runNext(int engineIndex, int caseIndex, int iteration) {
-    List<String> engines = engines();
-    if (engineIndex >= engines.size()) {
-      finishRun();
+  private void populateStage(String engine, int count) {
+    if (stage == null || stage.getWidth() == 0 || stage.getHeight() == 0) {
       return;
     }
-    if (caseIndex >= cases.size()) {
-      runNext(engineIndex + 1, 0, 0);
-      return;
-    }
-    if (iteration >= iterations) {
-      runNext(engineIndex, caseIndex + 1, 0);
-      return;
-    }
+    GridLayout grid = new GridLayout(this);
+    int columns = Math.min(MAX_COLUMNS, count);
+    int rows = (int) Math.ceil(count / (float) columns);
+    int tileSize = Math.max(dp(48), Math.min(
+        stage.getWidth() / MAX_COLUMNS,
+        stage.getHeight() / MAX_ROWS));
+    grid.setColumnCount(columns);
+    grid.setRowCount(rows);
+    FrameLayout.LayoutParams gridParams = new FrameLayout.LayoutParams(
+        columns * tileSize,
+        rows * tileSize,
+        Gravity.CENTER);
+    stage.addView(grid, gridParams);
 
-    String engine = engines.get(engineIndex);
-    CaseSpec spec = cases.get(caseIndex);
-    setStatus("Running " + engine + " / " + spec.id + " iteration "
-        + (iteration + 1) + "/" + iterations);
-    handler.postDelayed(() -> runCase(engine, spec, iteration, () ->
-        handler.postDelayed(() -> runNext(engineIndex, caseIndex, iteration + 1), 500)), 250);
+    for (int i = 0; i < count; i++) {
+      View animationView = ENGINE_ANIMAX.equals(engine)
+          ? createAnimaxView(i)
+          : createLottieView();
+      GridLayout.LayoutParams params = new GridLayout.LayoutParams();
+      params.width = tileSize;
+      params.height = tileSize;
+      params.setMargins(0, 0, 0, 0);
+      grid.addView(animationView, params);
+    }
   }
 
-  private List<String> engines() {
-    if ("animax".equalsIgnoreCase(requestedEngine)) {
-      return Collections.singletonList("animax");
+  private View createAnimaxView(int index) {
+    AnimaXView view = new AnimaXView(this);
+    view.setObjectFit(ObjectFit.CONTAIN);
+    view.setAutoPlay(true);
+    view.setLoop(true);
+    view.setFpsEventInterval(ANIMAX_FPS_INTERVAL_MS);
+    while (animaxGpuFpsValues.size() <= index) {
+      animaxGpuFpsValues.add(0f);
     }
-    if ("lottie".equalsIgnoreCase(requestedEngine)) {
-      return Collections.singletonList("lottie");
-    }
-    List<String> list = new ArrayList<>();
-    list.add("animax");
-    list.add("lottie");
-    return list;
-  }
-
-  private void runCase(String engine, CaseSpec spec, int iteration, Runnable done) {
-    stage.removeAllViews();
-
-    CaseRun caseRun = new CaseRun(engine, spec, iteration);
-
-    EngineHarness harness = "animax".equals(engine)
-        ? new AnimaxHarness()
-        : new LottieHarness();
-
-    EngineCallback callback = new EngineCallback() {
-      boolean completed;
-
+    AnimationListenerAdapter listener = new AnimationListenerAdapter() {
       @Override
-      public void onCompositionReady() {
-        if (caseRun.compositionReady) {
-          return;
-        }
-        caseRun.compositionReady = true;
-        traceEvent("bench_composition_ready");
-      }
-
-      @Override
-      public void onFirstFrame() {
-        if (caseRun.firstFrameSeen) {
-          return;
-        }
-        caseRun.firstFrameSeen = true;
-        traceEvent("bench_first_frame");
-        handler.postDelayed(() -> finish(null), caseDurationMs);
-      }
-
-      @Override
-      public void onError(String message) {
-        finish(message);
-      }
-
-      private void finish(String error) {
-        if (completed) {
-          return;
-        }
-        completed = true;
-        caseRun.error = error;
-        harness.release();
-        stage.removeAllViews();
-        appendCaseRun(caseRun);
-        done.run();
+      public void onFPS(AnimaXFPSParam param) {
+        animaxGpuFpsValues.set(index, param.getFPS());
+        animaxGpuFps = averagePositive(animaxGpuFpsValues);
+        updateFpsText(currentSceneEngine, currentSceneCount);
       }
     };
+    view.addAnimationListener(listener);
+    view.setSrc(UriUtil.fromLocalAsset(assetPath));
+    animaxViews.add(view);
+    animaxListeners.add(listener);
+    return view;
+  }
 
-    handler.postDelayed(() -> {
-      if (!caseRun.firstFrameSeen) {
-        callback.onError("timeout waiting for first frame");
+  private View createLottieView() {
+    LottieAnimationView view = new LottieAnimationView(this);
+    view.setCacheComposition(false);
+    view.setRenderMode(RenderMode.AUTOMATIC);
+    view.setRepeatCount(ValueAnimator.INFINITE);
+    view.setRepeatMode(ValueAnimator.RESTART);
+    view.setAnimationFromJson(readAssetUnchecked(assetPath), null);
+    view.playAnimation();
+    lottieViews.add(view);
+    return view;
+  }
+
+  private void updateFpsText(String engine, int count) {
+    if (fpsView == null) {
+      return;
+    }
+    String mainFps = formatFps(mainThreadFps);
+    if (ENGINE_ANIMAX.equals(engine)) {
+      fpsView.setText("Engine: AnimaX  Count: x" + count
+          + "\nMain thread FPS: " + mainFps
+          + "\nAnimaX GPU FPS: " + formatFps(animaxGpuFps));
+    } else {
+      fpsView.setText("Engine: Lottie  Count: x" + count
+          + "\nMain thread FPS: " + mainFps);
+    }
+  }
+
+  private void releaseScene() {
+    mainThreadFpsMonitor.stop();
+    for (int i = 0; i < animaxViews.size(); i++) {
+      AnimaXView view = animaxViews.get(i);
+      if (i < animaxListeners.size()) {
+        view.removeAnimationListener(animaxListeners.get(i));
       }
-    }, 15000);
+      view.stop();
+      view.release();
+    }
+    for (LottieAnimationView view : lottieViews) {
+      view.cancelAnimation();
+    }
+    animaxViews.clear();
+    animaxListeners.clear();
+    lottieViews.clear();
+    animaxGpuFpsValues.clear();
+    if (stage != null) {
+      stage.removeAllViews();
+    }
+    stage = null;
+    fpsView = null;
+  }
 
+  private String readAssetUnchecked(String name) {
     try {
-      Trace.beginSection("bench_case_setup");
-      try {
-        View view;
-        Trace.beginSection("bench_create_view");
-        try {
-          view = harness.create(this, callback);
-        } finally {
-          Trace.endSection();
-        }
-        stage.addView(view, new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        String json;
-        Trace.beginSection("bench_read_asset");
-        try {
-          json = readAsset(spec.file);
-        } finally {
-          Trace.endSection();
-        }
-        Trace.beginSection("bench_set_animation");
-        try {
-          harness.load(json, spec.file);
-        } finally {
-          Trace.endSection();
-        }
-      } finally {
-        Trace.endSection();
-      }
-    } catch (Exception e) {
-      callback.onError(e.getClass().getSimpleName() + ": " + e.getMessage());
+      return readAsset(name);
+    } catch (IOException e) {
+      throw new IllegalStateException("Unable to read asset: " + name, e);
     }
-  }
-
-  private void appendCaseRun(CaseRun caseRun) {
-    try {
-      caseRuns.put(caseRun.toJson());
-      writeResults(false);
-      setStatus(caseRun.engine + " / " + caseRun.spec.id
-          + " " + caseRun.status()
-          + (caseRun.error == null ? "" : " error=" + caseRun.error));
-    } catch (Exception e) {
-      setStatus("Failed to append case run: " + e.getMessage());
-    }
-  }
-
-  private void finishRun() {
-    try {
-      writeResults(true);
-      setStatus("Run complete. Result: " + latestJson.getAbsolutePath()
-          + "\nPull with: adb exec-out run-as com.animax.benchmark cat files/results/"
-          + latestJson.getName() + " > " + latestJson.getName());
-    } catch (Exception e) {
-      setStatus("Run complete but failed to write result: " + e.getMessage());
-    }
-    running = false;
-    runButton.setEnabled(true);
-  }
-
-  private void writeResults(boolean finalWrite) throws IOException, JSONException {
-    JSONObject root = new JSONObject();
-    root.put("schemaVersion", 2);
-    root.put("runnerMode", "case-launch");
-    root.put("runId", runId);
-    root.put("final", finalWrite);
-    root.put("platform", "android");
-    root.put("engineFilter", requestedEngine);
-    root.put("iterations", iterations);
-    root.put("caseDurationMs", caseDurationMs);
-    root.put("device", deviceJson());
-    root.put("caseRuns", caseRuns);
-
-    File dir = new File(getFilesDir(), "results");
-    if (!dir.exists() && !dir.mkdirs()) {
-      throw new IOException("Unable to create " + dir);
-    }
-    latestJson = new File(dir, "animax-lottie-android-" + runId + ".json");
-    try (FileOutputStream out = new FileOutputStream(latestJson)) {
-      out.write(root.toString(2).getBytes(StandardCharsets.UTF_8));
-    }
-  }
-
-  private JSONObject deviceJson() throws JSONException {
-    JSONObject device = new JSONObject();
-    device.put("manufacturer", Build.MANUFACTURER);
-    device.put("model", Build.MODEL);
-    device.put("sdkInt", Build.VERSION.SDK_INT);
-    device.put("abi", Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "");
-    device.put("refreshRate", displayRefreshRate());
-    return device;
-  }
-
-  private float displayRefreshRate() {
-    if (Build.VERSION.SDK_INT >= 30 && getDisplay() != null) {
-      return getDisplay().getRefreshRate();
-    }
-    if (stage != null && stage.getDisplay() != null) {
-      return stage.getDisplay().getRefreshRate();
-    }
-    return 60f;
   }
 
   private String readAsset(String name) throws IOException {
     try (InputStream input = getAssets().open(name);
-         BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
+         BufferedReader reader =
+             new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
       StringBuilder builder = new StringBuilder();
       String line;
       while ((line = reader.readLine()) != null) {
@@ -356,174 +354,91 @@ public final class BenchmarkActivity extends Activity {
     }
   }
 
-  private void setStatus(String text) {
-    String line = new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date()) + " " + text;
-    if (status == null) {
-      android.util.Log.i(TAG, line);
-      return;
+  private int normalizeCount(int count) {
+    for (int value : COUNTS) {
+      if (value == count) {
+        return value;
+      }
     }
-    status.append(line + "\n");
-    android.util.Log.i(TAG, line);
+    return 1;
+  }
+
+  private static String engineLabel(String engine) {
+    return ENGINE_LOTTIE.equals(engine) ? "Lottie" : "AnimaX";
+  }
+
+  private static float averagePositive(List<Float> values) {
+    float sum = 0f;
+    int count = 0;
+    for (Float value : values) {
+      if (value != null && value > 0f) {
+        sum += value;
+        count++;
+      }
+    }
+    return count == 0 ? 0f : sum / count;
+  }
+
+  private static String formatFps(float fps) {
+    if (fps <= 0f) {
+      return "--";
+    }
+    return String.format(Locale.US, "%.1f", fps);
   }
 
   private int dp(int value) {
     return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
   }
 
-  private static void traceEvent(String section) {
-    Trace.beginSection(section);
-    Trace.endSection();
-  }
+  private static final class MainThreadFpsMonitor implements Choreographer.FrameCallback {
+    private static final long FPS_WINDOW_NS = 1_000_000_000L;
 
-  private interface EngineCallback {
-    void onCompositionReady();
-    void onFirstFrame();
-    void onError(String message);
-  }
+    private boolean running;
+    private long windowStartNs;
+    private int frames;
+    private Callback callback;
 
-  private interface EngineHarness {
-    View create(Activity activity, EngineCallback callback);
-    void load(String json, String cacheKey);
-    void release();
-  }
-
-  private static final class AnimaxHarness implements EngineHarness {
-    private AnimaXView view;
-    private boolean firstFrame;
-
-    @Override
-    public View create(Activity activity, EngineCallback callback) {
-      view = new AnimaXView(activity);
-      view.setObjectFit(ObjectFit.CONTAIN);
-      view.setLoop(true);
-      view.setAutoPlay(false);
-      view.addAnimationListener(new AnimationListenerAdapter() {
-        @Override
-        public void onReady(AnimaXParam param) {
-          callback.onCompositionReady();
-          view.play();
-        }
-
-        @Override
-        public void onCompositionReady(AnimaXParam param) {
-          callback.onCompositionReady();
-        }
-
-        @Override
-        public void onFirstFrame(AnimaXParam param) {
-          if (!firstFrame) {
-            firstFrame = true;
-            callback.onFirstFrame();
-          }
-        }
-      });
-      return view;
+    void start(Callback callback) {
+      stop();
+      this.callback = callback;
+      running = true;
+      windowStartNs = 0L;
+      frames = 0;
+      Choreographer.getInstance().postFrameCallback(this);
     }
 
-    @Override
-    public void load(String json, String cacheKey) {
-      view.setSrc(UriUtil.fromLocalAsset(cacheKey));
-    }
-
-    @Override
-    public void release() {
-      if (view != null) {
-        view.stop();
-        view.release();
-        view = null;
+    void stop() {
+      if (running) {
+        Choreographer.getInstance().removeFrameCallback(this);
       }
+      running = false;
+      callback = null;
+      windowStartNs = 0L;
+      frames = 0;
     }
-  }
-
-  private static final class LottieHarness implements EngineHarness {
-    private LottieAnimationView view;
-    private boolean firstFrame;
 
     @Override
-    public View create(Activity activity, EngineCallback callback) {
-      view = new LottieAnimationView(activity);
-      view.setCacheComposition(false);
-      view.setRenderMode(RenderMode.AUTOMATIC);
-      view.setRepeatCount(ValueAnimator.INFINITE);
-      view.addLottieOnCompositionLoadedListener(composition -> {
-        callback.onCompositionReady();
-        view.playAnimation();
-      });
-      view.addAnimatorUpdateListener(animation -> {
-        if (!firstFrame) {
-          firstFrame = true;
-          callback.onFirstFrame();
+    public void doFrame(long frameTimeNanos) {
+      if (!running) {
+        return;
+      }
+      if (windowStartNs == 0L) {
+        windowStartNs = frameTimeNanos;
+      }
+      frames++;
+      long elapsed = frameTimeNanos - windowStartNs;
+      if (elapsed >= FPS_WINDOW_NS) {
+        if (callback != null) {
+          callback.onFps(frames * (FPS_WINDOW_NS / (float) elapsed));
         }
-      });
-      return view;
-    }
-
-    @Override
-    public void load(String json, String cacheKey) {
-      view.setAnimationFromJson(json, null);
-    }
-
-    @Override
-    public void release() {
-      if (view != null) {
-        view.cancelAnimation();
-        view.removeAllAnimatorListeners();
-        view.removeAllUpdateListeners();
-        view = null;
+        frames = 0;
+        windowStartNs = frameTimeNanos;
       }
-    }
-  }
-
-  private static final class CaseSpec {
-    final String id;
-    final String file;
-    final String category;
-    final JSONArray features;
-
-    CaseSpec(String id, String file, String category, JSONArray features) {
-      this.id = id;
-      this.file = file;
-      this.category = category;
-      this.features = features == null ? new JSONArray() : features;
-    }
-  }
-
-  private static final class CaseRun {
-    final String engine;
-    final CaseSpec spec;
-    final int iteration;
-    boolean compositionReady;
-    boolean firstFrameSeen;
-    String error;
-
-    CaseRun(String engine, CaseSpec spec, int iteration) {
-      this.engine = engine;
-      this.spec = spec;
-      this.iteration = iteration;
+      Choreographer.getInstance().postFrameCallback(this);
     }
 
-    JSONObject toJson() throws JSONException {
-      JSONObject json = new JSONObject();
-      json.put("engine", engine);
-      json.put("caseId", spec.id);
-      json.put("file", spec.file);
-      json.put("category", spec.category);
-      json.put("features", spec.features);
-      json.put("iteration", iteration);
-      json.put("status", status());
-      json.put("compositionReady", compositionReady);
-      json.put("firstFrameSeen", firstFrameSeen);
-      if (error != null) {
-        json.put("error", error);
-      }
-      return json;
-    }
-
-    String status() {
-      if (error != null) {
-        return "error";
-      }
-      return firstFrameSeen ? "launched" : "started";
+    interface Callback {
+      void onFps(float fps);
     }
   }
 }

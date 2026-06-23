@@ -2,38 +2,47 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-ITERATIONS=3
-ENGINE=all
-CASE_DURATION_MS=10000
-OUT_DIR="$ROOT_DIR/results/android"
+ADB="${ADB:-adb}"
+ENGINE="animax"
+COUNT="1"
+ASSET="lotties/lottie_logo_2.json"
 BUILD_ONLY=0
+HOME_ONLY=0
 
 usage() {
   cat <<EOF
 Usage: $0 [options]
 
 Options:
-  --iterations N       Iterations per engine/case. Default: 3.
-  --engine NAME        all, animax, or lottie. Default: all.
-  --case-duration-ms N Time to keep each launched case on screen. Default: 10000.
-  --out DIR            Output directory. Default: results/android.
-  --build-only         Build APK but do not install/run.
+  --engine NAME   animax or lottie. Default: animax.
+  --count N       1, 5, 10, or 20. Default: 1.
+  --asset PATH    Local APK asset path. Default: lotties/lottie_logo_2.json.
+  --home          Launch the home screen instead of a scene.
+  --build-only    Build APK but do not install/run.
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --iterations) ITERATIONS="$2"; shift 2 ;;
     --engine) ENGINE="$2"; shift 2 ;;
-    --case-duration-ms) CASE_DURATION_MS="$2"; shift 2 ;;
-    --out) OUT_DIR="$2"; shift 2 ;;
+    --count) COUNT="$2"; shift 2 ;;
+    --asset) ASSET="$2"; shift 2 ;;
+    --home) HOME_ONLY=1; shift ;;
     --build-only) BUILD_ONLY=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
   esac
 done
 
-mkdir -p "$OUT_DIR"
+if [[ "$ENGINE" != "animax" && "$ENGINE" != "lottie" ]]; then
+  echo "--engine must be animax or lottie" >&2
+  exit 1
+fi
+
+if [[ "$COUNT" != "1" && "$COUNT" != "5" && "$COUNT" != "10" && "$COUNT" != "20" ]]; then
+  echo "--count must be 1, 5, 10, or 20" >&2
+  exit 1
+fi
 
 java_major="$(java -version 2>&1 | awk -F[\".] '/version/ {print $2; exit}')"
 if [[ -z "$java_major" || "$java_major" -lt 17 ]]; then
@@ -53,6 +62,15 @@ if [[ -z "$java_major" || "$java_major" -lt 17 ]]; then
   exit 1
 fi
 
+if ! command -v "$ADB" >/dev/null 2>&1; then
+  if [[ -x "$HOME/Library/Android/sdk/platform-tools/adb" ]]; then
+    ADB="$HOME/Library/Android/sdk/platform-tools/adb"
+  else
+    echo "adb was not found. Set ADB or add Android platform-tools to PATH." >&2
+    exit 1
+  fi
+fi
+
 pushd "$ROOT_DIR/android" >/dev/null
 ./gradlew :app:assembleNoasanDebug
 popd >/dev/null
@@ -63,40 +81,18 @@ if [[ "$BUILD_ONLY" == "1" ]]; then
   exit 0
 fi
 
-adb install -r "$APK"
-adb shell am force-stop com.animax.benchmark >/dev/null
-adb shell am start \
-  -n com.animax.benchmark/.BenchmarkActivity \
-  --ez autorun true \
-  --ei iterations "$ITERATIONS" \
-  --el caseDurationMs "$CASE_DURATION_MS" \
-  --es engine "$ENGINE" >/dev/null
+"$ADB" install -r "$APK"
+"$ADB" shell am force-stop com.animax.benchmark >/dev/null
 
-echo "Case runner started. Waiting for final result..."
-deadline=$((SECONDS + 3600))
-latest=""
-while (( SECONDS < deadline )); do
-  latest="$(adb shell run-as com.animax.benchmark sh -c 'ls -t files/results/*.json 2>/dev/null | head -1' | tr -d '\r' || true)"
-  if [[ -n "$latest" ]]; then
-    tmp="$OUT_DIR/.latest.json"
-    adb exec-out run-as com.animax.benchmark cat "$latest" > "$tmp" || true
-    if python3 - "$tmp" <<'PY'
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        sys.exit(0 if json.load(f).get("final") is True else 1)
-except Exception:
-    sys.exit(1)
-PY
-    then
-      out="$OUT_DIR/$(basename "$latest")"
-      mv "$tmp" "$out"
-      echo "Result: $out"
-      exit 0
-    fi
-  fi
-  sleep 5
-done
-
-echo "Timed out waiting for final result" >&2
-exit 1
+if [[ "$HOME_ONLY" == "1" ]]; then
+  "$ADB" shell am start -n com.animax.benchmark/.BenchmarkActivity >/dev/null
+  echo "Launched benchmark home screen"
+else
+  "$ADB" shell am start \
+    -n com.animax.benchmark/.BenchmarkActivity \
+    --ez autorun true \
+    --es engine "$ENGINE" \
+    --ei count "$COUNT" \
+    --es asset "$ASSET" >/dev/null
+  echo "Launched $ENGINE x$COUNT scene"
+fi
