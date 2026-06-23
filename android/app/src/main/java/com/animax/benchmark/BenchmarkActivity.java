@@ -2,6 +2,7 @@ package com.animax.benchmark;
 
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.graphics.Canvas;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.Choreographer;
@@ -11,6 +12,7 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.FrameLayout;
 import android.widget.GridLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import com.airbnb.lottie.LottieAnimationView;
@@ -28,11 +30,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public final class BenchmarkActivity extends Activity {
   private static final String ENGINE_ANIMAX = "animax";
   private static final String ENGINE_LOTTIE = "lottie";
-  private static final String DEFAULT_ASSET = "lotties/lottie_logo_2.json";
+  private static final String DEFAULT_MANIFEST = "manifest.json";
   private static final int[] COUNTS = {1, 5, 10, 20};
   private static final int MAX_COLUMNS = 4;
   private static final int MAX_ROWS = 5;
@@ -43,6 +48,7 @@ public final class BenchmarkActivity extends Activity {
   private final List<AnimationListenerAdapter> animaxListeners = new ArrayList<>();
   private final List<LottieAnimationView> lottieViews = new ArrayList<>();
   private final List<Float> animaxGpuFpsValues = new ArrayList<>();
+  private final List<String> caseAssetPaths = new ArrayList<>();
 
   private CheckBox animaxCheckBox;
   private CheckBox lottieCheckBox;
@@ -50,7 +56,7 @@ public final class BenchmarkActivity extends Activity {
   private TextView fpsView;
   private FrameLayout stage;
   private String selectedEngine = ENGINE_ANIMAX;
-  private String assetPath = DEFAULT_ASSET;
+  private String assetStatus = "";
   private String currentSceneEngine = ENGINE_ANIMAX;
   private int currentSceneCount = 1;
   private boolean showingScene;
@@ -60,8 +66,11 @@ public final class BenchmarkActivity extends Activity {
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
-    if (getIntent().getStringExtra("asset") != null) {
-      assetPath = getIntent().getStringExtra("asset");
+    try {
+      loadCaseAssets();
+      assetStatus = "Loaded " + caseAssetPaths.size() + " unique local assets.";
+    } catch (Exception e) {
+      assetStatus = "Failed to load local assets: " + e.getMessage();
     }
     showHome();
     if (getIntent().getBooleanExtra("autorun", false)) {
@@ -105,7 +114,7 @@ public final class BenchmarkActivity extends Activity {
         ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
 
     TextView subtitle = new TextView(this);
-    subtitle.setText("Asset: " + assetPath + "\nChoose one engine, then choose a render count.");
+    subtitle.setText("Each instance uses a different local JSON asset.\nChoose one engine, then choose a render count.");
     subtitle.setTextSize(14);
     subtitle.setTextColor(0xff666666);
     root.addView(subtitle, new LinearLayout.LayoutParams(
@@ -143,6 +152,7 @@ public final class BenchmarkActivity extends Activity {
       button.setText("x" + count);
       button.setTextSize(18);
       button.setAllCaps(false);
+      button.setEnabled(caseAssetPaths.size() >= count);
       button.setOnClickListener(v -> showScene(selectedEngine, count));
       LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
           ViewGroup.LayoutParams.MATCH_PARENT, dp(64));
@@ -153,7 +163,7 @@ public final class BenchmarkActivity extends Activity {
     homeStatus = new TextView(this);
     homeStatus.setTextSize(13);
     homeStatus.setTextColor(0xff777777);
-    homeStatus.setText("Memory is intentionally measured from host-side tooling.");
+    homeStatus.setText(assetStatus + " Memory is intentionally measured from host-side tooling.");
     root.addView(homeStatus, new LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
 
@@ -171,6 +181,12 @@ public final class BenchmarkActivity extends Activity {
   }
 
   private void showScene(String engine, int count) {
+    if (caseAssetPaths.size() < count) {
+      assetStatus = "Need at least " + count + " unique local assets, but only found "
+          + caseAssetPaths.size() + ".";
+      showHome();
+      return;
+    }
     releaseScene();
     showingScene = true;
     selectedEngine = engine;
@@ -207,11 +223,11 @@ public final class BenchmarkActivity extends Activity {
 
     fpsView = new TextView(this);
     fpsView.setTextColor(0xffe6e6e6);
-    fpsView.setTextSize(15);
+    fpsView.setTextSize(14);
     fpsView.setPadding(dp(16), dp(8), dp(16), dp(8));
     fpsView.setBackgroundColor(0xff222222);
     root.addView(fpsView, new LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT, dp(78)));
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(92)));
 
     stage = new FrameLayout(this);
     stage.setBackgroundColor(0xfff4f4f4);
@@ -240,6 +256,8 @@ public final class BenchmarkActivity extends Activity {
         stage.getHeight() / MAX_ROWS));
     grid.setColumnCount(columns);
     grid.setRowCount(rows);
+    grid.setClipChildren(true);
+    grid.setClipToPadding(true);
     FrameLayout.LayoutParams gridParams = new FrameLayout.LayoutParams(
         columns * tileSize,
         rows * tileSize,
@@ -247,18 +265,26 @@ public final class BenchmarkActivity extends Activity {
     stage.addView(grid, gridParams);
 
     for (int i = 0; i < count; i++) {
+      String assetPath = caseAssetPaths.get(i);
       View animationView = ENGINE_ANIMAX.equals(engine)
-          ? createAnimaxView(i)
-          : createLottieView();
+          ? createAnimaxView(i, assetPath)
+          : createLottieView(assetPath);
+      FrameLayout tile = new ClipFrameLayout(this);
+      tile.setClipChildren(true);
+      tile.setClipToPadding(true);
+      tile.addView(animationView, new FrameLayout.LayoutParams(
+          ViewGroup.LayoutParams.MATCH_PARENT,
+          ViewGroup.LayoutParams.MATCH_PARENT,
+          Gravity.CENTER));
       GridLayout.LayoutParams params = new GridLayout.LayoutParams();
       params.width = tileSize;
       params.height = tileSize;
       params.setMargins(0, 0, 0, 0);
-      grid.addView(animationView, params);
+      grid.addView(tile, params);
     }
   }
 
-  private View createAnimaxView(int index) {
+  private View createAnimaxView(int index, String assetPath) {
     AnimaXView view = new AnimaXView(this);
     view.setObjectFit(ObjectFit.CONTAIN);
     view.setAutoPlay(true);
@@ -282,10 +308,11 @@ public final class BenchmarkActivity extends Activity {
     return view;
   }
 
-  private View createLottieView() {
+  private View createLottieView(String assetPath) {
     LottieAnimationView view = new LottieAnimationView(this);
     view.setCacheComposition(false);
     view.setRenderMode(RenderMode.AUTOMATIC);
+    view.setScaleType(ImageView.ScaleType.FIT_CENTER);
     view.setRepeatCount(ValueAnimator.INFINITE);
     view.setRepeatMode(ValueAnimator.RESTART);
     view.setAnimationFromJson(readAssetUnchecked(assetPath), null);
@@ -301,10 +328,12 @@ public final class BenchmarkActivity extends Activity {
     String mainFps = formatFps(mainThreadFps);
     if (ENGINE_ANIMAX.equals(engine)) {
       fpsView.setText("Engine: AnimaX  Count: x" + count
+          + "\nUnique assets: " + count
           + "\nMain thread FPS: " + mainFps
           + "\nAnimaX GPU FPS: " + formatFps(animaxGpuFps));
     } else {
       fpsView.setText("Engine: Lottie  Count: x" + count
+          + "\nUnique assets: " + count
           + "\nMain thread FPS: " + mainFps);
     }
   }
@@ -331,6 +360,22 @@ public final class BenchmarkActivity extends Activity {
     }
     stage = null;
     fpsView = null;
+  }
+
+  private void loadCaseAssets() throws IOException, JSONException {
+    String manifest = readAsset(DEFAULT_MANIFEST);
+    JSONArray cases = new JSONObject(manifest).getJSONArray("cases");
+    caseAssetPaths.clear();
+    for (int i = 0; i < cases.length(); i++) {
+      String file = cases.getJSONObject(i).getString("file");
+      if (!caseAssetPaths.contains(file)) {
+        caseAssetPaths.add(file);
+      }
+    }
+    if (caseAssetPaths.size() < COUNTS[COUNTS.length - 1]) {
+      throw new IOException("manifest has fewer than " + COUNTS[COUNTS.length - 1]
+          + " unique case files");
+    }
   }
 
   private String readAssetUnchecked(String name) {
@@ -439,6 +484,21 @@ public final class BenchmarkActivity extends Activity {
 
     interface Callback {
       void onFps(float fps);
+    }
+  }
+
+  private static final class ClipFrameLayout extends FrameLayout {
+    ClipFrameLayout(Activity activity) {
+      super(activity);
+    }
+
+    @Override
+    protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+      int saveCount = canvas.save();
+      canvas.clipRect(0, 0, getWidth(), getHeight());
+      boolean result = super.drawChild(canvas, child, drawingTime);
+      canvas.restoreToCount(saveCount);
+      return result;
     }
   }
 }

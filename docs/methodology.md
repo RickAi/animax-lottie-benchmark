@@ -10,6 +10,7 @@ The Android app runs a manual multi-instance FPS scenario:
 - One selected engine at a time: AnimaX or Lottie.
 - Local-only animation assets loaded from the APK.
 - Autoplay and loop enabled for every instance.
+- Every instance in a scene uses a different local JSON file selected from the manifest; x20 therefore requires at least 20 unique local cases.
 - A fixed tile size derived from the x20 grid, so the x20 scene fills the available width/height without overflow while smaller scenes change only the instance count.
 - Main-thread FPS sampled with `Choreographer`.
 - AnimaX GPU/offscreen FPS sampled through `AnimationListenerAdapter.onFPS` after `setFpsEventInterval(1000)`.

@@ -17,6 +17,7 @@ The checked-in Android app focuses on steady-state multi-instance rendering:
 - Let the user choose AnimaX or Lottie with checkboxes.
 - Open a dedicated render page where all animations autoplay and loop.
 - Keep each animation tile at a fixed size derived from the x20 grid, so count changes increase instance count instead of resizing each instance.
+- Use a different local Lottie JSON for every animation instance in each x1/x5/x10/x20 scene.
 - Show main-thread FPS for both engines.
 - Show AnimaX GPU/offscreen FPS from `AnimationListenerAdapter.onFPS` after setting `setFpsEventInterval(1000)`.
 
@@ -34,7 +35,7 @@ Collect memory, CPU, frame interval, and latency metrics from PC-side tooling su
 
 ## Cases
 
-The default case manifest is [assets/manifest.json](assets/manifest.json). It currently uses Apache-2.0 sample files from the official Airbnb Lottie Android/iOS repositories:
+The default case manifest is [assets/manifest.json](assets/manifest.json). It currently uses 20 Apache-2.0 sample files from the official Airbnb Lottie Android/iOS repositories. The Android xN runner takes the first N unique files from this manifest, so no animation instance in a scene reuses the same JSON asset.
 
 - `hamburger_arrow`: small path morph.
 - `lottie_logo_2`: complex logo, many layers.
@@ -46,6 +47,7 @@ The default case manifest is [assets/manifest.json](assets/manifest.json). It cu
 - `text_animated_properties`: text animation.
 - `shadow_effect_animated`: effect/shadow coverage.
 - `motion_corpse`: large-canvas motion sample.
+- `nine_squares_al_boardman`, `boat_loader`, `icon_transitions`, `lottie_logo_1`, `lottie_logo_1_masked`, `switch`, `switch_states`, `twitter_heart_button`, `watermelon`, and `success`: additional official Lottie iOS samples used to make the x20 multi-instance scene non-repeating.
 
 See [assets/README.md](assets/README.md) for provenance and license notes.
 

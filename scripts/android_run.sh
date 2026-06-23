@@ -5,7 +5,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 ADB="${ADB:-adb}"
 ENGINE="animax"
 COUNT="1"
-ASSET="lotties/lottie_logo_2.json"
 BUILD_ONLY=0
 HOME_ONLY=0
 
@@ -16,7 +15,6 @@ Usage: $0 [options]
 Options:
   --engine NAME   animax or lottie. Default: animax.
   --count N       1, 5, 10, or 20. Default: 1.
-  --asset PATH    Local APK asset path. Default: lotties/lottie_logo_2.json.
   --home          Launch the home screen instead of a scene.
   --build-only    Build APK but do not install/run.
 EOF
@@ -26,7 +24,6 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --engine) ENGINE="$2"; shift 2 ;;
     --count) COUNT="$2"; shift 2 ;;
-    --asset) ASSET="$2"; shift 2 ;;
     --home) HOME_ONLY=1; shift ;;
     --build-only) BUILD_ONLY=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -92,7 +89,6 @@ else
     -n com.animax.benchmark/.BenchmarkActivity \
     --ez autorun true \
     --es engine "$ENGINE" \
-    --ei count "$COUNT" \
-    --es asset "$ASSET" >/dev/null
+    --ei count "$COUNT" >/dev/null
   echo "Launched $ENGINE x$COUNT scene"
 fi

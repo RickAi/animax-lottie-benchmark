@@ -91,6 +91,96 @@
       "source": "airbnb/lottie-ios Tests/Samples/MotionCorpse_Jrcanest.json",
       "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
       "license": "Apache-2.0"
+    },
+    {
+      "id": "nine_squares_al_boardman",
+      "file": "lotties/nine_squares_al_boardman.json",
+      "category": "motion",
+      "features": ["shape", "many_layers", "loop"],
+      "source": "airbnb/lottie-ios Tests/Samples/9squares_AlBoardman.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "boat_loader",
+      "file": "lotties/boat_loader.json",
+      "category": "loader",
+      "features": ["shape", "long_timeline", "large_canvas"],
+      "source": "airbnb/lottie-ios Tests/Samples/Boat_Loader.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "icon_transitions",
+      "file": "lotties/icon_transitions.json",
+      "category": "icon",
+      "features": ["shape", "transitions", "many_layers"],
+      "source": "airbnb/lottie-ios Tests/Samples/IconTransitions.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "lottie_logo_1",
+      "file": "lotties/lottie_logo_1.json",
+      "category": "complex",
+      "features": ["many_layers", "logo"],
+      "source": "airbnb/lottie-ios Tests/Samples/LottieLogo1.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "lottie_logo_1_masked",
+      "file": "lotties/lottie_logo_1_masked.json",
+      "category": "complex",
+      "features": ["many_layers", "mask", "logo"],
+      "source": "airbnb/lottie-ios Tests/Samples/LottieLogo1_masked.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "switch",
+      "file": "lotties/switch.json",
+      "category": "control",
+      "features": ["shape", "state_transition"],
+      "source": "airbnb/lottie-ios Tests/Samples/Switch.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "switch_states",
+      "file": "lotties/switch_states.json",
+      "category": "control",
+      "features": ["shape", "state_transition"],
+      "source": "airbnb/lottie-ios Tests/Samples/Switch_States.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "twitter_heart_button",
+      "file": "lotties/twitter_heart_button.json",
+      "category": "icon",
+      "features": ["shape", "burst", "button"],
+      "source": "airbnb/lottie-ios Tests/Samples/TwitterHeartButton.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "watermelon",
+      "file": "lotties/watermelon.json",
+      "category": "icon",
+      "features": ["shape", "long_timeline"],
+      "source": "airbnb/lottie-ios Tests/Samples/Watermelon.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "success",
+      "file": "lotties/success.json",
+      "category": "icon",
+      "features": ["shape", "stroke"],
+      "source": "airbnb/lottie-ios Tests/Samples/success.json",
+      "source_commit": "906e79b0648c16f02ad5844e345481ae05a94afe",
+      "license": "Apache-2.0"
     }
   ]
 }
