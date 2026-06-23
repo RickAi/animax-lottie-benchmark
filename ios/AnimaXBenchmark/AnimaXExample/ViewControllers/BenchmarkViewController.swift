@@ -1,8 +1,6 @@
-import AnimaX
-import Darwin
 import Foundation
 import Lottie
-import QuartzCore
+import os
 import UIKit
 
 @objc(BenchmarkViewController)
@@ -14,30 +12,18 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     let features: [String]
   }
 
-  private final class MutableSample {
+  private final class CaseRun {
     let engine: String
     let spec: CaseSpec
     let iteration: Int
-    let loadStart: CFTimeInterval
-    let cpuStartMs: Double
-    let memoryStart: MemorySnapshot
-    var compositionMs: Double = -1
-    var firstFrameMs: Double = -1
-    var cpuEndMs: Double = 0
-    var memoryEnd: MemorySnapshot = .capture()
-    var memoryPeakBytes: UInt64 = 0
-    var frameStats = FrameStats()
-    var engineFps: [Double] = []
-    var engineMemoryBytes: Int64 = 0
+    var compositionReady = false
+    var firstFrameSeen = false
     var error: String?
 
     init(engine: String, spec: CaseSpec, iteration: Int) {
       self.engine = engine
       self.spec = spec
       self.iteration = iteration
-      loadStart = CACurrentMediaTime()
-      cpuStartMs = BenchmarkViewController.processCpuMs()
-      memoryStart = .capture()
     }
 
     func asDictionary() -> [String: Any] {
@@ -48,156 +34,21 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
         "category": spec.category,
         "features": spec.features,
         "iteration": iteration,
-        "compositionMs": compositionMs,
-        "firstFrameMs": firstFrameMs,
-        "processCpuMs": cpuEndMs - cpuStartMs,
-        "engineFpsMean": engineFps.isEmpty ? -1 : engineFps.reduce(0, +) / Double(engineFps.count),
-        "engineMemoryBytes": engineMemoryBytes,
-        "memoryStart": memoryStart.asDictionary(),
-        "memoryEnd": memoryEnd.asDictionary(),
-        "memoryPeakBytes": memoryPeakBytes,
-        "frames": frameStats.asDictionary()
+        "status": status,
+        "compositionReady": compositionReady,
+        "firstFrameSeen": firstFrameSeen
       ]
       if let error {
         dictionary["error"] = error
       }
       return dictionary
     }
-  }
 
-  private struct MemorySnapshot {
-    let residentBytes: UInt64
-    let physicalFootprintBytes: UInt64
-
-    static func capture() -> MemorySnapshot {
-      var info = task_vm_info_data_t()
-      var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
-      let result = withUnsafeMutablePointer(to: &info) { pointer in
-        pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-          task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
-        }
+    private var status: String {
+      if error != nil {
+        return "error"
       }
-      guard result == KERN_SUCCESS else {
-        return MemorySnapshot(residentBytes: 0, physicalFootprintBytes: 0)
-      }
-      return MemorySnapshot(
-        residentBytes: UInt64(info.resident_size),
-        physicalFootprintBytes: UInt64(info.phys_footprint)
-      )
-    }
-
-    func asDictionary() -> [String: Any] {
-      [
-        "residentBytes": residentBytes,
-        "physicalFootprintBytes": physicalFootprintBytes
-      ]
-    }
-  }
-
-  private struct FrameStats {
-    var frameCount = 0
-    var averageFps: Double = 0
-    var p50Ms: Double = 0
-    var p90Ms: Double = 0
-    var p95Ms: Double = 0
-    var p99Ms: Double = 0
-    var jankPercent: Double = 0
-    var droppedFrames = 0
-
-    func asDictionary() -> [String: Any] {
-      [
-        "frameCount": frameCount,
-        "averageFps": averageFps,
-        "p50Ms": p50Ms,
-        "p90Ms": p90Ms,
-        "p95Ms": p95Ms,
-        "p99Ms": p99Ms,
-        "jankPercent": jankPercent,
-        "droppedFrames": droppedFrames
-      ]
-    }
-  }
-
-  private final class DisplayLinkSampler {
-    private let refreshPeriod: CFTimeInterval
-    private var link: CADisplayLink?
-    private var previousTimestamp: CFTimeInterval?
-    private var firstTimestamp: CFTimeInterval?
-    private var lastTimestamp: CFTimeInterval?
-    private var intervals: [CFTimeInterval] = []
-
-    init(refreshRate: Double) {
-      refreshPeriod = 1.0 / max(1.0, refreshRate)
-    }
-
-    func start() {
-      intervals.removeAll()
-      previousTimestamp = nil
-      firstTimestamp = nil
-      lastTimestamp = nil
-      link = CADisplayLink(target: self, selector: #selector(tick(_:)))
-      link?.add(to: .main, forMode: .common)
-    }
-
-    func stop() -> FrameStats {
-      link?.invalidate()
-      link = nil
-      guard let firstTimestamp, let lastTimestamp, lastTimestamp > firstTimestamp, !intervals.isEmpty else {
-        return FrameStats()
-      }
-
-      let sorted = intervals.map { $0 * 1000.0 }.sorted()
-      var jank = 0
-      var dropped = 0
-      for interval in intervals {
-        if interval > refreshPeriod * 1.5 {
-          jank += 1
-        }
-        dropped += max(0, Int(round(interval / refreshPeriod)) - 1)
-      }
-
-      let duration = lastTimestamp - firstTimestamp
-      return FrameStats(
-        frameCount: intervals.count + 1,
-        averageFps: Double(intervals.count + 1) / duration,
-        p50Ms: BenchmarkViewController.percentile(sorted, 50),
-        p90Ms: BenchmarkViewController.percentile(sorted, 90),
-        p95Ms: BenchmarkViewController.percentile(sorted, 95),
-        p99Ms: BenchmarkViewController.percentile(sorted, 99),
-        jankPercent: 100.0 * Double(jank) / Double(intervals.count),
-        droppedFrames: dropped
-      )
-    }
-
-    @objc private func tick(_ link: CADisplayLink) {
-      if firstTimestamp == nil {
-        firstTimestamp = link.timestamp
-      }
-      if let previousTimestamp {
-        intervals.append(link.timestamp - previousTimestamp)
-      }
-      previousTimestamp = link.timestamp
-      lastTimestamp = link.timestamp
-    }
-  }
-
-  private final class MemorySampler {
-    private var timer: Timer?
-    private(set) var peakBytes: UInt64 = 0
-
-    func start() {
-      peakBytes = MemorySnapshot.capture().physicalFootprintBytes
-      timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-        self?.peakBytes = max(self?.peakBytes ?? 0, MemorySnapshot.capture().physicalFootprintBytes)
-      }
-      if let timer {
-        RunLoop.main.add(timer, forMode: .common)
-      }
-    }
-
-    func stop() {
-      timer?.invalidate()
-      timer = nil
+      return firstFrameSeen ? "launched" : "started"
     }
   }
 
@@ -205,19 +56,18 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
   private let statusView = UITextView()
   private let runButton = UIButton(type: .system)
   private var cases: [CaseSpec] = []
-  private var results: [[String: Any]] = []
+  private var caseRuns: [[String: Any]] = []
   private var runId = ""
   private var iterations = 3
-  private var warmupMs: UInt64 = 1000
-  private var measureMs: UInt64 = 10_000
+  private var caseDurationMs: UInt64 = 10_000
   private var engineFilter = "all"
   private var currentAnimaxView: AnimaXView?
-  private var currentSample: MutableSample?
+  private var currentCaseRun: CaseRun?
   private var firstFrameSeen = false
 
   override func viewDidLoad() {
     super.viewDidLoad()
-    title = "AnimaX Benchmark"
+    title = "AnimaX Case Runner"
     view.backgroundColor = .systemBackground
     parseArguments()
     buildUI()
@@ -236,10 +86,8 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     for argument in ProcessInfo.processInfo.arguments {
       if argument.hasPrefix("--iterations=") {
         iterations = Int(argument.replacingOccurrences(of: "--iterations=", with: "")) ?? iterations
-      } else if argument.hasPrefix("--warmup-ms=") {
-        warmupMs = UInt64(argument.replacingOccurrences(of: "--warmup-ms=", with: "")) ?? warmupMs
-      } else if argument.hasPrefix("--measure-ms=") {
-        measureMs = UInt64(argument.replacingOccurrences(of: "--measure-ms=", with: "")) ?? measureMs
+      } else if argument.hasPrefix("--case-duration-ms=") {
+        caseDurationMs = UInt64(argument.replacingOccurrences(of: "--case-duration-ms=", with: "")) ?? caseDurationMs
       } else if argument.hasPrefix("--engine=") {
         engineFilter = argument.replacingOccurrences(of: "--engine=", with: "")
       }
@@ -257,7 +105,7 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     stage.translatesAutoresizingMaskIntoConstraints = false
     stack.addArrangedSubview(stage)
 
-    runButton.setTitle("Run benchmark", for: .normal)
+    runButton.setTitle("Run cases", for: .normal)
     runButton.addTarget(self, action: #selector(runTapped), for: .touchUpInside)
     stack.addArrangedSubview(runButton)
 
@@ -283,18 +131,18 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
   private func runBenchmark() async {
     guard !cases.isEmpty else { return }
     runButton.isEnabled = false
-    results.removeAll()
+    caseRuns.removeAll()
     runId = Self.timestamp()
-    appendStatus("Run \(runId) started iterations=\(iterations) engine=\(engineFilter)")
+    appendStatus("Run \(runId) started iterations=\(iterations) caseDurationMs=\(caseDurationMs) engine=\(engineFilter)")
 
     for engine in engines() {
       for spec in cases {
         for iteration in 0..<iterations {
           appendStatus("Running \(engine) / \(spec.id) \(iteration + 1)/\(iterations)")
-          let sample = await runSample(engine: engine, spec: spec, iteration: iteration)
-          results.append(sample.asDictionary())
+          let caseRun = await runCase(engine: engine, spec: spec, iteration: iteration)
+          caseRuns.append(caseRun.asDictionary())
           writeResults(final: false)
-          appendStatus("\(engine) / \(spec.id) fps=\(Self.round2(sample.frameStats.averageFps)) p95=\(Self.round2(sample.frameStats.p95Ms))ms")
+          appendStatus("\(engine) / \(spec.id) \(caseRun.error == nil ? "launched" : "error")")
           try? await Task.sleep(nanoseconds: 500_000_000)
         }
       }
@@ -305,56 +153,52 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     runButton.isEnabled = true
   }
 
-  private func runSample(engine: String, spec: CaseSpec, iteration: Int) async -> MutableSample {
+  private func runCase(engine: String, spec: CaseSpec, iteration: Int) async -> CaseRun {
     clearStage()
-    let sample = MutableSample(engine: engine, spec: spec, iteration: iteration)
-    currentSample = sample
+    let caseRun = CaseRun(engine: engine, spec: spec, iteration: iteration)
+    currentCaseRun = caseRun
     firstFrameSeen = false
+    let caseSignpost = OSSignpostID(log: Self.signpostLog)
+    os_signpost(.begin, log: Self.signpostLog, name: "bench_case_run", signpostID: caseSignpost)
+    defer {
+      os_signpost(.end, log: Self.signpostLog, name: "bench_case_run", signpostID: caseSignpost)
+    }
 
     do {
       let url = try urlForCase(spec)
-      let data = try Data(contentsOf: url)
+      let data = try Self.signposted("bench_read_asset") {
+        try Data(contentsOf: url)
+      }
       let json = String(decoding: data, as: UTF8.self)
 
-      if engine == "animax" {
-        runAnimax(json: json)
-      } else {
-        try runLottie(data: data, sample: sample)
+      try Self.signposted("bench_set_animation") {
+        if engine == "animax" {
+          runAnimax(json: json)
+        } else {
+          try runLottie(data: data)
+        }
       }
 
       for _ in 0..<150 where !firstFrameSeen {
         try? await Task.sleep(nanoseconds: 100_000_000)
       }
       if !firstFrameSeen {
-        sample.error = "timeout waiting for first frame"
+        caseRun.error = "timeout waiting for first frame"
+      } else {
+        try? await Task.sleep(nanoseconds: caseDurationMs * 1_000_000)
       }
     } catch {
-      sample.error = error.localizedDescription
+      caseRun.error = error.localizedDescription
     }
 
-    if sample.firstFrameMs >= 0 {
-      try? await Task.sleep(nanoseconds: warmupMs * 1_000_000)
-      let frameSampler = DisplayLinkSampler(refreshRate: Double(UIScreen.main.maximumFramesPerSecond))
-      let memorySampler = MemorySampler()
-      frameSampler.start()
-      memorySampler.start()
-      try? await Task.sleep(nanoseconds: measureMs * 1_000_000)
-      sample.frameStats = frameSampler.stop()
-      memorySampler.stop()
-      sample.memoryPeakBytes = memorySampler.peakBytes
-    }
-
-    sample.cpuEndMs = Self.processCpuMs()
-    sample.memoryEnd = .capture()
     if let animaxView = currentAnimaxView {
-      sample.engineMemoryBytes = animaxView.memoryUsageBytes()
       animaxView.stop()
       animaxView.removeAnimationEventListener(self)
     }
     clearStage()
     currentAnimaxView = nil
-    currentSample = nil
-    return sample
+    currentCaseRun = nil
+    return caseRun
   }
 
   private func runAnimax(json: String) {
@@ -363,16 +207,15 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     animaxView.translatesAutoresizingMaskIntoConstraints = false
     animaxView.setLoop(true)
     animaxView.setAutoplay(false)
-    animaxView.setFPSEventInterval(1000)
     animaxView.addAnimationEventListener(self)
     addToStage(animaxView)
     currentAnimaxView = animaxView
     animaxView.setJson(json)
   }
 
-  private func runLottie(data: Data, sample: MutableSample) throws {
+  private func runLottie(data: Data) throws {
     let animation = try LottieAnimation.from(data: data)
-    sample.compositionMs = Self.elapsedMs(sample.loadStart)
+    markCompositionReady()
     let lottieView = LottieAnimationView(
       animation: animation,
       configuration: LottieConfiguration(renderingEngine: .automatic)
@@ -382,52 +225,41 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     addToStage(lottieView)
     lottieView.loopMode = .loop
     lottieView.play()
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak sample] in
-      guard let sample else { return }
-      if sample.firstFrameMs < 0 {
-        sample.firstFrameMs = BenchmarkViewController.elapsedMs(sample.loadStart)
-      }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+      self?.currentCaseRun?.firstFrameSeen = true
       self?.firstFrameSeen = true
+      Self.signpostEvent("bench_first_frame")
     }
   }
 
-  @objc(onReady:)
-  func onReady(_ params: NSDictionary) {
-    guard let sample = currentSample else { return }
-    if sample.compositionMs < 0 {
-      sample.compositionMs = Self.elapsedMs(sample.loadStart)
-    }
+  func onReady(_ params: [AnyHashable: Any]) {
+    markCompositionReady()
     currentAnimaxView?.play()
   }
 
-  @objc(onCompositionReady:)
-  func onCompositionReady(_ params: NSDictionary) {
-    guard let sample = currentSample else { return }
-    if sample.compositionMs < 0 {
-      sample.compositionMs = Self.elapsedMs(sample.loadStart)
-    }
+  func onCompositionReady(_ params: [AnyHashable: Any]) {
+    markCompositionReady()
   }
 
-  @objc(onFirstFrame:)
-  func onFirstFrame(_ params: NSDictionary) {
-    guard let sample = currentSample else { return }
-    if sample.firstFrameMs < 0 {
-      sample.firstFrameMs = Self.elapsedMs(sample.loadStart)
+  func onFirstFrame(_ params: [AnyHashable: Any]) {
+    guard let caseRun = currentCaseRun, !caseRun.firstFrameSeen else {
+      return
     }
+    caseRun.firstFrameSeen = true
     firstFrameSeen = true
+    Self.signpostEvent("bench_first_frame")
   }
 
-  @objc(onFps:)
-  func onFps(_ params: NSDictionary) {
-    guard let sample = currentSample else { return }
-    if let fps = params["fps"] as? NSNumber {
-      sample.engineFps.append(fps.doubleValue)
+  func onError(_ params: [AnyHashable: Any]) {
+    currentCaseRun?.error = String(describing: params)
+  }
+
+  private func markCompositionReady() {
+    guard let caseRun = currentCaseRun, !caseRun.compositionReady else {
+      return
     }
-  }
-
-  @objc(onError:)
-  func onError(_ params: NSDictionary) {
-    currentSample?.error = params.description
+    caseRun.compositionReady = true
+    Self.signpostEvent("bench_composition_ready")
   }
 
   private func addToStage(_ child: UIView) {
@@ -483,21 +315,21 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
 
   private func writeResults(final: Bool) {
     let root: [String: Any] = [
-      "schemaVersion": 1,
+      "schemaVersion": 2,
+      "runnerMode": "case-launch",
       "runId": runId,
       "final": final,
       "platform": "ios",
       "engineFilter": engineFilter,
       "iterations": iterations,
-      "warmupMs": warmupMs,
-      "measureMs": measureMs,
+      "caseDurationMs": caseDurationMs,
       "device": [
         "model": UIDevice.current.model,
         "systemName": UIDevice.current.systemName,
         "systemVersion": UIDevice.current.systemVersion,
         "maximumFramesPerSecond": UIScreen.main.maximumFramesPerSecond
       ],
-      "samples": results
+      "caseRuns": caseRuns
     ]
     do {
       let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
@@ -522,35 +354,24 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     print("[AnimaXBench] \(line)", terminator: "")
   }
 
-  private static func elapsedMs(_ start: CFTimeInterval) -> Double {
-    (CACurrentMediaTime() - start) * 1000.0
+  private static let signpostLog = OSLog(subsystem: "com.animax.benchmark", category: "CaseRunner")
+
+  private static func signposted<T>(_ name: StaticString, _ work: () throws -> T) rethrows -> T {
+    let signpostID = OSSignpostID(log: signpostLog)
+    os_signpost(.begin, log: signpostLog, name: name, signpostID: signpostID)
+    defer {
+      os_signpost(.end, log: signpostLog, name: name, signpostID: signpostID)
+    }
+    return try work()
   }
 
-  private static func percentile(_ sorted: [Double], _ percentile: Double) -> Double {
-    guard !sorted.isEmpty else { return 0 }
-    let rank = (percentile / 100.0) * Double(sorted.count - 1)
-    let low = Int(floor(rank))
-    let high = Int(ceil(rank))
-    if low == high { return sorted[low] }
-    let fraction = rank - Double(low)
-    return sorted[low] * (1 - fraction) + sorted[high] * fraction
-  }
-
-  private static func processCpuMs() -> Double {
-    var usage = rusage()
-    getrusage(RUSAGE_SELF, &usage)
-    let user = Double(usage.ru_utime.tv_sec) * 1000.0 + Double(usage.ru_utime.tv_usec) / 1000.0
-    let system = Double(usage.ru_stime.tv_sec) * 1000.0 + Double(usage.ru_stime.tv_usec) / 1000.0
-    return user + system
+  private static func signpostEvent(_ name: StaticString) {
+    os_signpost(.event, log: signpostLog, name: name)
   }
 
   private static func timestamp() -> String {
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyyMMdd-HHmmss"
     return formatter.string(from: Date())
-  }
-
-  private static func round2(_ value: Double) -> Double {
-    Darwin.round(value * 100) / 100
   }
 }

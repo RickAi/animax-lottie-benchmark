@@ -1,18 +1,30 @@
-apply plugin: 'com.android.application'
+plugins {
+    id "com.android.application"
+}
+
+def animaxVersion = "1.0.0"
+def lynxVersion = "4.0.0-nightly.202606030642.55.ga9c771cc"
+def skityVersion = "1.1.0-alpha.0"
+def textraVersion = "0.1.5"
+def jacocoRuntimeVersion = "0.7.9"
+def lottieAndroidVersion = providers.gradleProperty("LOTTIE_ANDROID_VERSION").getOrElse("6.7.1")
+def abiList = providers.gradleProperty("abiList")
+        .map { value -> value.split(",").collect { it.trim() }.findAll { it } }
+        .getOrElse(["arm64-v8a"])
 
 android {
     namespace "com.animax.benchmark"
-    compileSdkVersion rootProject.ext.compileSdkVersion
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.animax.benchmark"
-        minSdkVersion 23
-        targetSdkVersion 28
+        minSdk 23
+        targetSdk 35
         versionCode 1
         versionName "0.1.0"
 
         ndk {
-            abiFilters(*(rootProject.ext.abiList))
+            abiFilters(*abiList)
         }
     }
 
@@ -28,25 +40,35 @@ android {
         }
     }
 
-    flavorDimensions "lynx"
+    flavorDimensions "benchmark"
     productFlavors {
-        asan {
-            dimension "lynx"
-            matchingFallbacks = ["asan"]
-        }
         noasan {
-            dimension "lynx"
-            matchingFallbacks = ["noasan"]
+            dimension "benchmark"
             getIsDefault().set(true)
         }
     }
 
-    packagingOptions {
-        exclude("META-INF/*.kotlin_module")
-        exclude("META-INF/aweme/source_info.json")
-        pickFirst '**/libc++_shared.so'
-        pickFirst '**/libskity.so'
-        pickFirst '**/liblynxtextra.so'
+    packaging {
+        resources {
+            excludes += [
+                    "META-INF/*.kotlin_module",
+                    "META-INF/DEPENDENCIES",
+                    "META-INF/LICENSE*",
+                    "META-INF/NOTICE*"
+            ]
+        }
+        jniLibs {
+            pickFirsts += [
+                    "**/libc++_shared.so",
+                    "**/libanimax.so",
+                    "**/libanimax_textra.so",
+                    "**/liblynxbase.so",
+                    "**/liblynxtrace.so",
+                    "**/liblynxtextra.so",
+                    "**/libskity.so",
+                    "**/libtttext_lite.so"
+            ]
+        }
     }
 
     sourceSets {
@@ -60,7 +82,14 @@ android {
 }
 
 dependencies {
-    implementation project(':AnimaXAndroid')
-    implementation project(':AnimaXTextra')
-    implementation "com.airbnb.android:lottie:${rootProject.ext.lottieAndroidVersion}"
+    implementation "androidx.appcompat:appcompat:1.0.0"
+    implementation "org.lynxsdk.lynx:animax-sdk:${animaxVersion}"
+    implementation "org.lynxsdk.lynx:animax-textra:${animaxVersion}"
+    implementation "com.airbnb.android:lottie:${lottieAndroidVersion}"
+
+    runtimeOnly "org.lynxsdk.lynx:lynx-base:${lynxVersion}"
+    runtimeOnly "org.lynxsdk.lynx:lynx-trace:${lynxVersion}"
+    runtimeOnly "org.lynxsdk.lynx:skity-native:${skityVersion}"
+    runtimeOnly "org.lynxsdk.lynx:lynxtextra:${textraVersion}"
+    runtimeOnly "org.jacoco:org.jacoco.agent:${jacocoRuntimeVersion}:runtime"
 }

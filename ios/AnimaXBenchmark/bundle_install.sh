@@ -7,38 +7,33 @@ set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 repo_root=$(cd "$script_dir/../.." && pwd -P)
-animax_dir="$repo_root/third_party/animax"
 bundle_path="$repo_root/.bundle/vendor"
-echo "animax_dir: $animax_dir"
-command="pod install --verbose --repo-update"
+command=(pod install --verbose --repo-update)
 project_name="AnimaXExample.xcodeproj"
-enable_trace=false
 
-# Prepare CocoaPods environment
 export COCOAPODS_CONVERT_GIT_TO_HTTP=false
 export LANG=en_US.UTF-8
-export SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
+export SDKROOT=${SDKROOT:-/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk}
+if [[ "${RUBYOPT:-}" != *"-rlogger"* ]]; then
+  export RUBYOPT="${RUBYOPT:+$RUBYOPT }-rlogger"
+fi
 
 usage() {
   echo "Usage: $0 [OPTIONS]"
   echo "Options:"
   echo "  -h, --help         Show this help message"
-  echo "  --enable-trace     Enable trace/perfetto"
-  echo "  --disable-trace    Disable trace/perfetto (default)"
+  echo "  --enable-trace     Accepted for compatibility; binary pods decide trace support"
+  echo "  --disable-trace    Accepted for compatibility; binary pods decide trace support"
 }
 
 handle_options() {
-  for i in "$@"; do
-    case $i in
+  for option in "$@"; do
+    case "$option" in
       -h|--help)
         usage
         exit 0
         ;;
-      --enable-trace)
-        enable_trace=true
-        ;;
-      --disable-trace)
-        enable_trace=false
+      --enable-trace|--disable-trace)
         ;;
       *)
         usage
@@ -50,23 +45,15 @@ handle_options() {
 
 handle_options "$@"
 
-enable_trace_param=""
-if [ "$enable_trace" = true ]; then
-  enable_trace_param="--enable-trace"
+cd "$script_dir"
+
+if command -v bundle >/dev/null && [[ -f Gemfile ]]; then
+  bundle install -V --path="$bundle_path"
+  bundle exec pod deintegrate "$project_name" || true
+  rm -rf Podfile.lock
+  bundle exec "${command[@]}"
+else
+  pod deintegrate "$project_name" || true
+  rm -rf Podfile.lock
+  "${command[@]}"
 fi
-
-if [ ! -d "$animax_dir/tools_shared" ]; then
-  "$repo_root/scripts/bootstrap_deps.sh"
-fi
-
-pushd "$animax_dir"
-gn_root_dir=$(pwd -P)
-echo "gn_root_dir: $gn_root_dir"
-python3 tools/ios_tools/generate_podspec_scripts_by_gn.py --root "$gn_root_dir" $enable_trace_param --target //platform/darwin/ios:animax_podspec
-popd
-
-BUNDLE_GEMFILE="$animax_dir/Gemfile" bundle install -V --path="$bundle_path"
-
-BUNDLE_GEMFILE="$animax_dir/Gemfile" bundle exec pod deintegrate "$project_name"
-rm -rf Podfile.lock
-BUNDLE_GEMFILE="$animax_dir/Gemfile" bundle exec $command

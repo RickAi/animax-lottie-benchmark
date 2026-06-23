@@ -5,13 +5,9 @@ import android.app.Activity;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Debug;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.Process;
-import android.os.SystemClock;
 import android.os.Trace;
-import android.view.Choreographer;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -22,10 +18,11 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import com.airbnb.lottie.LottieAnimationView;
 import com.airbnb.lottie.RenderMode;
-import com.lynx.animax.listener.AnimaXFPSParam;
 import com.lynx.animax.listener.AnimaXParam;
 import com.lynx.animax.listener.AnimationListenerAdapter;
 import com.lynx.animax.ui.AnimaXView;
+import com.lynx.animax.ui.ObjectFit;
+import com.lynx.animax.util.UriUtil;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -48,15 +45,14 @@ public final class BenchmarkActivity extends Activity {
 
   private final Handler handler = new Handler(Looper.getMainLooper());
   private final List<CaseSpec> cases = new ArrayList<>();
-  private JSONArray samples = new JSONArray();
+  private JSONArray caseRuns = new JSONArray();
 
   private FrameLayout stage;
   private TextView status;
   private Button runButton;
   private String runId;
   private int iterations;
-  private long warmupMs;
-  private long measureMs;
+  private long caseDurationMs;
   private String requestedEngine;
   private File latestJson;
   private boolean running;
@@ -79,8 +75,7 @@ public final class BenchmarkActivity extends Activity {
 
   private void readConfig(Intent intent) {
     iterations = intent.getIntExtra("iterations", 3);
-    warmupMs = intent.getLongExtra("warmupMs", 1000L);
-    measureMs = intent.getLongExtra("measureMs", 10000L);
+    caseDurationMs = intent.getLongExtra("caseDurationMs", 10000L);
     requestedEngine = intent.getStringExtra("engine");
     if (requestedEngine == null || requestedEngine.length() == 0) {
       requestedEngine = "all";
@@ -94,7 +89,7 @@ public final class BenchmarkActivity extends Activity {
     root.setPadding(dp(16), dp(16), dp(16), dp(16));
 
     TextView title = new TextView(this);
-    title.setText("AnimaX vs Lottie Benchmark");
+    title.setText("AnimaX vs Lottie Case Runner");
     title.setTextSize(20);
     title.setGravity(Gravity.CENTER_VERTICAL);
     root.addView(title, new LinearLayout.LayoutParams(
@@ -106,7 +101,7 @@ public final class BenchmarkActivity extends Activity {
         ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
     runButton = new Button(this);
-    runButton.setText("Run benchmark");
+    runButton.setText("Run cases");
     runButton.setOnClickListener(v -> startBenchmark());
     root.addView(runButton, new LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
@@ -149,9 +144,9 @@ public final class BenchmarkActivity extends Activity {
     }
     running = true;
     runButton.setEnabled(false);
-    samples = new JSONArray();
+    caseRuns = new JSONArray();
     setStatus("Run " + runId + " started. iterations=" + iterations
-        + " warmupMs=" + warmupMs + " measureMs=" + measureMs
+        + " caseDurationMs=" + caseDurationMs
         + " engine=" + requestedEngine);
     runNext(0, 0, 0);
   }
@@ -175,7 +170,7 @@ public final class BenchmarkActivity extends Activity {
     CaseSpec spec = cases.get(caseIndex);
     setStatus("Running " + engine + " / " + spec.id + " iteration "
         + (iteration + 1) + "/" + iterations);
-    handler.postDelayed(() -> runSample(engine, spec, iteration, () ->
+    handler.postDelayed(() -> runCase(engine, spec, iteration, () ->
         handler.postDelayed(() -> runNext(engineIndex, caseIndex, iteration + 1), 500)), 250);
   }
 
@@ -192,53 +187,35 @@ public final class BenchmarkActivity extends Activity {
     return list;
   }
 
-  private void runSample(String engine, CaseSpec spec, int iteration, Runnable done) {
-    System.gc();
+  private void runCase(String engine, CaseSpec spec, int iteration, Runnable done) {
     stage.removeAllViews();
 
-    Sample sample = new Sample(engine, spec, iteration);
-    sample.loadStartNs = SystemClock.elapsedRealtimeNanos();
-    sample.cpuStartMs = Process.getElapsedCpuTime();
-    sample.memoryStart = MemorySnapshot.capture();
+    CaseRun caseRun = new CaseRun(engine, spec, iteration);
 
     EngineHarness harness = "animax".equals(engine)
         ? new AnimaxHarness()
         : new LottieHarness();
-    FrameSampler frameSampler = new FrameSampler(displayRefreshRate());
-    MemorySampler memorySampler = new MemorySampler();
 
     EngineCallback callback = new EngineCallback() {
-      boolean measurementStarted;
       boolean completed;
 
       @Override
       public void onCompositionReady() {
-        if (sample.compositionMs < 0) {
-          sample.compositionMs = elapsedMs(sample.loadStartNs);
+        if (caseRun.compositionReady) {
+          return;
         }
+        caseRun.compositionReady = true;
+        traceEvent("bench_composition_ready");
       }
 
       @Override
       public void onFirstFrame() {
-        if (sample.firstFrameMs < 0) {
-          Trace.beginSection("bench_first_frame");
-          sample.firstFrameMs = elapsedMs(sample.loadStartNs);
-          Trace.endSection();
-        }
-        if (measurementStarted) {
+        if (caseRun.firstFrameSeen) {
           return;
         }
-        measurementStarted = true;
-        handler.postDelayed(() -> {
-          frameSampler.start();
-          memorySampler.start();
-          handler.postDelayed(() -> finish(null), measureMs);
-        }, warmupMs);
-      }
-
-      @Override
-      public void onEngineFps(float fps) {
-        sample.engineFps.add(fps);
+        caseRun.firstFrameSeen = true;
+        traceEvent("bench_first_frame");
+        handler.postDelayed(() -> finish(null), caseDurationMs);
       }
 
       @Override
@@ -251,41 +228,46 @@ public final class BenchmarkActivity extends Activity {
           return;
         }
         completed = true;
-        frameSampler.stop();
-        memorySampler.stop();
-        sample.error = error;
-        sample.cpuEndMs = Process.getElapsedCpuTime();
-        sample.memoryEnd = MemorySnapshot.capture();
-        sample.memoryPeakPssKb = memorySampler.peakPssKb;
-        sample.frameStats = frameSampler.stats();
-        sample.engineMemoryBytes = harness.engineMemoryBytes();
+        caseRun.error = error;
         harness.release();
         stage.removeAllViews();
-        appendSample(sample);
+        appendCaseRun(caseRun);
         done.run();
       }
     };
 
     handler.postDelayed(() -> {
-      if (sample.firstFrameMs < 0) {
+      if (!caseRun.firstFrameSeen) {
         callback.onError("timeout waiting for first frame");
       }
     }, 15000);
 
     try {
-      View view = harness.create(this, callback);
-      stage.addView(view, new FrameLayout.LayoutParams(
-          ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-      String json;
-      Trace.beginSection("bench_read_asset");
+      Trace.beginSection("bench_case_setup");
       try {
-        json = readAsset(spec.file);
-      } finally {
-        Trace.endSection();
-      }
-      Trace.beginSection("bench_set_animation");
-      try {
-        harness.load(json, spec.file);
+        View view;
+        Trace.beginSection("bench_create_view");
+        try {
+          view = harness.create(this, callback);
+        } finally {
+          Trace.endSection();
+        }
+        stage.addView(view, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        String json;
+        Trace.beginSection("bench_read_asset");
+        try {
+          json = readAsset(spec.file);
+        } finally {
+          Trace.endSection();
+        }
+        Trace.beginSection("bench_set_animation");
+        try {
+          harness.load(json, spec.file);
+        } finally {
+          Trace.endSection();
+        }
       } finally {
         Trace.endSection();
       }
@@ -294,18 +276,15 @@ public final class BenchmarkActivity extends Activity {
     }
   }
 
-  private void appendSample(Sample sample) {
+  private void appendCaseRun(CaseRun caseRun) {
     try {
-      samples.put(sample.toJson());
+      caseRuns.put(caseRun.toJson());
       writeResults(false);
-      FrameStats stats = sample.frameStats;
-      setStatus(sample.engine + " / " + sample.spec.id
-          + " done: fps=" + round(stats.averageFps)
-          + " p95=" + round(stats.p95Ms) + "ms"
-          + " jank=" + round(stats.jankPercent) + "%"
-          + (sample.error == null ? "" : " error=" + sample.error));
+      setStatus(caseRun.engine + " / " + caseRun.spec.id
+          + " " + caseRun.status()
+          + (caseRun.error == null ? "" : " error=" + caseRun.error));
     } catch (Exception e) {
-      setStatus("Failed to append sample: " + e.getMessage());
+      setStatus("Failed to append case run: " + e.getMessage());
     }
   }
 
@@ -324,16 +303,16 @@ public final class BenchmarkActivity extends Activity {
 
   private void writeResults(boolean finalWrite) throws IOException, JSONException {
     JSONObject root = new JSONObject();
-    root.put("schemaVersion", 1);
+    root.put("schemaVersion", 2);
+    root.put("runnerMode", "case-launch");
     root.put("runId", runId);
     root.put("final", finalWrite);
     root.put("platform", "android");
     root.put("engineFilter", requestedEngine);
     root.put("iterations", iterations);
-    root.put("warmupMs", warmupMs);
-    root.put("measureMs", measureMs);
+    root.put("caseDurationMs", caseDurationMs);
     root.put("device", deviceJson());
-    root.put("samples", samples);
+    root.put("caseRuns", caseRuns);
 
     File dir = new File(getFilesDir(), "results");
     if (!dir.exists() && !dir.mkdirs()) {
@@ -391,25 +370,20 @@ public final class BenchmarkActivity extends Activity {
     return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
   }
 
-  private static double elapsedMs(long startNs) {
-    return (SystemClock.elapsedRealtimeNanos() - startNs) / 1_000_000.0;
-  }
-
-  private static double round(double value) {
-    return Math.round(value * 100.0) / 100.0;
+  private static void traceEvent(String section) {
+    Trace.beginSection(section);
+    Trace.endSection();
   }
 
   private interface EngineCallback {
     void onCompositionReady();
     void onFirstFrame();
-    void onEngineFps(float fps);
     void onError(String message);
   }
 
   private interface EngineHarness {
     View create(Activity activity, EngineCallback callback);
     void load(String json, String cacheKey);
-    long engineMemoryBytes();
     void release();
   }
 
@@ -420,9 +394,9 @@ public final class BenchmarkActivity extends Activity {
     @Override
     public View create(Activity activity, EngineCallback callback) {
       view = new AnimaXView(activity);
+      view.setObjectFit(ObjectFit.CONTAIN);
       view.setLoop(true);
       view.setAutoPlay(false);
-      view.setFpsEventInterval(1000);
       view.addAnimationListener(new AnimationListenerAdapter() {
         @Override
         public void onReady(AnimaXParam param) {
@@ -442,23 +416,13 @@ public final class BenchmarkActivity extends Activity {
             callback.onFirstFrame();
           }
         }
-
-        @Override
-        public void onFPS(AnimaXFPSParam param) {
-          callback.onEngineFps(param.getFPS());
-        }
       });
       return view;
     }
 
     @Override
     public void load(String json, String cacheKey) {
-      view.setJson(json);
-    }
-
-    @Override
-    public long engineMemoryBytes() {
-      return 0L;
+      view.setSrc(UriUtil.fromLocalAsset(cacheKey));
     }
 
     @Override
@@ -500,11 +464,6 @@ public final class BenchmarkActivity extends Activity {
     }
 
     @Override
-    public long engineMemoryBytes() {
-      return 0L;
-    }
-
-    @Override
     public void release() {
       if (view != null) {
         view.cancelAnimation();
@@ -529,24 +488,15 @@ public final class BenchmarkActivity extends Activity {
     }
   }
 
-  private static final class Sample {
+  private static final class CaseRun {
     final String engine;
     final CaseSpec spec;
     final int iteration;
-    final List<Float> engineFps = new ArrayList<>();
-    long loadStartNs;
-    long cpuStartMs;
-    long cpuEndMs;
-    double compositionMs = -1;
-    double firstFrameMs = -1;
-    MemorySnapshot memoryStart;
-    MemorySnapshot memoryEnd;
-    long memoryPeakPssKb;
-    FrameStats frameStats = new FrameStats();
-    long engineMemoryBytes;
+    boolean compositionReady;
+    boolean firstFrameSeen;
     String error;
 
-    Sample(String engine, CaseSpec spec, int iteration) {
+    CaseRun(String engine, CaseSpec spec, int iteration) {
       this.engine = engine;
       this.spec = spec;
       this.iteration = iteration;
@@ -560,195 +510,20 @@ public final class BenchmarkActivity extends Activity {
       json.put("category", spec.category);
       json.put("features", spec.features);
       json.put("iteration", iteration);
-      json.put("compositionMs", compositionMs);
-      json.put("firstFrameMs", firstFrameMs);
-      json.put("processCpuMs", cpuEndMs - cpuStartMs);
-      json.put("engineMemoryBytes", engineMemoryBytes);
-      json.put("engineFpsMean", mean(engineFps));
-      json.put("memoryStart", memoryStart.toJson());
-      json.put("memoryEnd", memoryEnd.toJson());
-      json.put("memoryPeakPssKb", memoryPeakPssKb);
-      json.put("frames", frameStats.toJson());
+      json.put("status", status());
+      json.put("compositionReady", compositionReady);
+      json.put("firstFrameSeen", firstFrameSeen);
       if (error != null) {
         json.put("error", error);
       }
       return json;
     }
 
-    private static double mean(List<Float> values) {
-      if (values.isEmpty()) {
-        return -1;
+    String status() {
+      if (error != null) {
+        return "error";
       }
-      double sum = 0;
-      for (Float value : values) {
-        sum += value;
-      }
-      return sum / values.size();
+      return firstFrameSeen ? "launched" : "started";
     }
-  }
-
-  private static final class MemorySnapshot {
-    long totalPssKb;
-    long nativePssKb;
-    long dalvikPssKb;
-    long otherPssKb;
-    long nativeHeapAllocatedKb;
-    long javaHeapUsedKb;
-
-    static MemorySnapshot capture() {
-      Debug.MemoryInfo info = new Debug.MemoryInfo();
-      Debug.getMemoryInfo(info);
-      Runtime runtime = Runtime.getRuntime();
-      MemorySnapshot snapshot = new MemorySnapshot();
-      snapshot.totalPssKb = info.getTotalPss();
-      snapshot.nativePssKb = info.nativePss;
-      snapshot.dalvikPssKb = info.dalvikPss;
-      snapshot.otherPssKb = info.otherPss;
-      snapshot.nativeHeapAllocatedKb = Debug.getNativeHeapAllocatedSize() / 1024;
-      snapshot.javaHeapUsedKb = (runtime.totalMemory() - runtime.freeMemory()) / 1024;
-      return snapshot;
-    }
-
-    JSONObject toJson() throws JSONException {
-      JSONObject json = new JSONObject();
-      json.put("totalPssKb", totalPssKb);
-      json.put("nativePssKb", nativePssKb);
-      json.put("dalvikPssKb", dalvikPssKb);
-      json.put("otherPssKb", otherPssKb);
-      json.put("nativeHeapAllocatedKb", nativeHeapAllocatedKb);
-      json.put("javaHeapUsedKb", javaHeapUsedKb);
-      return json;
-    }
-  }
-
-  private final class MemorySampler implements Runnable {
-    long peakPssKb;
-    boolean running;
-
-    void start() {
-      running = true;
-      peakPssKb = MemorySnapshot.capture().totalPssKb;
-      handler.postDelayed(this, 250);
-    }
-
-    void stop() {
-      running = false;
-      handler.removeCallbacks(this);
-    }
-
-    @Override
-    public void run() {
-      if (!running) {
-        return;
-      }
-      peakPssKb = Math.max(peakPssKb, MemorySnapshot.capture().totalPssKb);
-      handler.postDelayed(this, 250);
-    }
-  }
-
-  private static final class FrameSampler implements Choreographer.FrameCallback {
-    private final List<Long> intervalsNs = new ArrayList<>();
-    private final double refreshPeriodNs;
-    private boolean running;
-    private long firstFrameNs;
-    private long lastFrameNs;
-    private long previousFrameNs;
-
-    FrameSampler(float refreshRate) {
-      refreshPeriodNs = 1_000_000_000.0 / Math.max(1.0, refreshRate);
-    }
-
-    void start() {
-      running = true;
-      Choreographer.getInstance().postFrameCallback(this);
-    }
-
-    void stop() {
-      running = false;
-      Choreographer.getInstance().removeFrameCallback(this);
-    }
-
-    @Override
-    public void doFrame(long frameTimeNanos) {
-      if (!running) {
-        return;
-      }
-      if (firstFrameNs == 0) {
-        firstFrameNs = frameTimeNanos;
-      }
-      if (previousFrameNs != 0) {
-        intervalsNs.add(frameTimeNanos - previousFrameNs);
-      }
-      previousFrameNs = frameTimeNanos;
-      lastFrameNs = frameTimeNanos;
-      Choreographer.getInstance().postFrameCallback(this);
-    }
-
-    FrameStats stats() {
-      FrameStats stats = new FrameStats();
-      if (intervalsNs.isEmpty() || firstFrameNs == 0 || lastFrameNs <= firstFrameNs) {
-        return stats;
-      }
-      List<Double> ms = new ArrayList<>(intervalsNs.size());
-      int jank = 0;
-      int dropped = 0;
-      for (Long interval : intervalsNs) {
-        double intervalMs = interval / 1_000_000.0;
-        ms.add(intervalMs);
-        if (interval > refreshPeriodNs * 1.5) {
-          jank++;
-        }
-        dropped += Math.max(0, (int) Math.round(interval / refreshPeriodNs) - 1);
-      }
-      Collections.sort(ms);
-      double durationSec = (lastFrameNs - firstFrameNs) / 1_000_000_000.0;
-      stats.frameCount = intervalsNs.size() + 1;
-      stats.averageFps = stats.frameCount / durationSec;
-      stats.p50Ms = percentile(ms, 50);
-      stats.p90Ms = percentile(ms, 90);
-      stats.p95Ms = percentile(ms, 95);
-      stats.p99Ms = percentile(ms, 99);
-      stats.jankPercent = 100.0 * jank / intervalsNs.size();
-      stats.droppedFrames = dropped;
-      return stats;
-    }
-  }
-
-  private static final class FrameStats {
-    int frameCount;
-    double averageFps;
-    double p50Ms;
-    double p90Ms;
-    double p95Ms;
-    double p99Ms;
-    double jankPercent;
-    int droppedFrames;
-
-    JSONObject toJson() throws JSONException {
-      JSONObject json = new JSONObject();
-      json.put("frameCount", frameCount);
-      json.put("averageFps", averageFps);
-      json.put("p50Ms", p50Ms);
-      json.put("p90Ms", p90Ms);
-      json.put("p95Ms", p95Ms);
-      json.put("p99Ms", p99Ms);
-      json.put("jankPercent", jankPercent);
-      json.put("droppedFrames", droppedFrames);
-      return json;
-    }
-  }
-
-  private static double percentile(List<Double> sorted, int percentile) {
-    if (sorted.isEmpty()) {
-      return 0;
-    }
-    double rank = (percentile / 100.0) * (sorted.size() - 1);
-    int low = (int) Math.floor(rank);
-    int high = (int) Math.ceil(rank);
-    if (low == high) {
-      return sorted.get(low);
-    }
-    double fraction = rank - low;
-    return sorted.get(low) * (1 - fraction) + sorted.get(high) * fraction;
   }
 }
