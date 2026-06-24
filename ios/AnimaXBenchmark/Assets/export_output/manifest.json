@@ -1,13 +1,13 @@
 {
   "version": 2,
-  "description": "Single local Lottie JSON case for AnimaX vs Airbnb Lottie native benchmark.",
+  "description": "Single local Lottie JSON workload for AnimaX vs Airbnb Lottie native benchmark.",
   "cases": [
     {
       "id": "heavy_matte_mask",
       "file": "lotties/heavy_matte_mask.json",
       "category": "feature",
-      "features": ["shape", "track_matte", "mask", "alpha_matte", "luma_matte"],
-      "source": "generated shape-only ANIMAX wordmark matte/mask stress case",
+      "features": ["shape", "track_matte", "mask", "alpha_matte"],
+      "source": "generated shape-only ANIMAX wordmark alpha matte/mask stress workload with 15 animated masks and 15 animated alpha mattes",
       "license": "Generated-local"
     }
   ]

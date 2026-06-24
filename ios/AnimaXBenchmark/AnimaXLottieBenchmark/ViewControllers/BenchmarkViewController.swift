@@ -3,7 +3,7 @@ import Lottie
 import UIKit
 
 @objc(BenchmarkViewController)
-final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
+final class BenchmarkViewController: UIViewController {
   private enum Engine: String {
     case animax
     case lottie
@@ -48,15 +48,14 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
   }
 
   private static let benchmarkCases = [
+    BenchmarkCase.renderCount("count-1", "x1", 1),
+    BenchmarkCase.renderCount("count-4", "x4", 4),
     BenchmarkCase.renderCount("count-8", "x8", 8),
-    BenchmarkCase.renderCount("count-12", "x12", 12),
-    BenchmarkCase.renderCount("count-16", "x16", 16),
-    BenchmarkCase.renderCount("count-20", "x20", 20)
+    BenchmarkCase.renderCount("count-12", "x12", 12)
   ]
   private static let maxColumns = 4
   private static let maxRows = 5
   private static let fixedGridCapacity = maxColumns * maxRows
-  private static let animaxFpsIntervalMs = 1000
 
   private let mainThreadFpsMonitor = MainThreadFpsMonitor()
   private let stage = UIView()
@@ -64,7 +63,6 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
   private var caseSpecs: [CaseSpec] = []
   private var animaxViews: [UIView & AnimaXPlayerProtocol] = []
   private var lottieViews: [LottieAnimationView] = []
-  private var animaxGpuFpsValues: [String: Double] = [:]
 
   private var animaxButton: UIButton?
   private var lottieButton: UIButton?
@@ -82,7 +80,6 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
   private var animaxMultiThreadEnabled = false
   private var animaxImageModeEnabled = false
   private var mainThreadFps = 0.0
-  private var animaxGpuFps = 0.0
   private var needsStagePopulation = false
   private var lastStageSize = CGSize.zero
 
@@ -245,8 +242,6 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     currentBenchmarkCase = benchmarkCase
     currentSceneCount = benchmarkCase.animationCount
     mainThreadFps = 0.0
-    animaxGpuFps = 0.0
-    animaxGpuFpsValues.removeAll()
     needsStagePopulation = true
     lastStageSize = .zero
     view.subviews.forEach { $0.removeFromSuperview() }
@@ -383,8 +378,6 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     animaxView.setLoop(true)
     animaxView.setAutoplay(true)
     animaxView.setObjectfit("contain")
-    animaxView.setFPSEventInterval(Self.animaxFpsIntervalMs)
-    animaxView.addAnimationEventListener(self)
     animaxView.setSrc(try srcForAsset(assetPath), in: Bundle.main)
     animaxViews.append(animaxView)
     return animaxView
@@ -395,32 +388,13 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     let animation = try LottieAnimation.from(data: data)
     let lottieView = LottieAnimationView(
       animation: animation,
-      configuration: LottieConfiguration(renderingEngine: .automatic)
+      configuration: LottieConfiguration(renderingEngine: .mainThread)
     )
     lottieView.contentMode = .scaleAspectFit
     lottieView.loopMode = .loop
     lottieView.play()
     lottieViews.append(lottieView)
     return lottieView
-  }
-
-  func onFps(_ params: [AnyHashable: Any]) {
-    guard let fpsNumber = params["fps"] as? NSNumber else {
-      return
-    }
-    let animationID = (params["animationID"] as? String) ?? "animax"
-    DispatchQueue.main.async { [weak self] in
-      guard let self, self.showingScene, self.currentSceneEngine == .animax else {
-        return
-      }
-      self.animaxGpuFpsValues[animationID] = fpsNumber.doubleValue
-      self.animaxGpuFps = self.averagePositive(Array(self.animaxGpuFpsValues.values))
-      self.updateFpsText()
-    }
-  }
-
-  func onError(_ params: [AnyHashable: Any]) {
-    print("[AnimaXBench] AnimaX error: \(params)")
   }
 
   private func releaseScene() {
@@ -434,7 +408,6 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
 
   private func releaseAnimationViews() {
     for view in animaxViews {
-      view.removeAnimationEventListener(self)
       view.stop()
     }
     for view in lottieViews {
@@ -442,7 +415,6 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     }
     animaxViews.removeAll()
     lottieViews.removeAll()
-    animaxGpuFpsValues.removeAll()
   }
 
   private func updateFpsText() {
@@ -459,13 +431,13 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
       lines.append("Image mode: \(animaxImageModeEnabled ? "enabled" : "disabled")")
       lines.append("Assets: \(assetSummary(for: currentSceneCount))")
       lines.append("Main thread FPS: \(formatFps(mainThreadFps))")
-      lines.append("AnimaX GPU FPS: \(formatFps(animaxGpuFps))")
       text = lines.joined(separator: "\n")
     } else {
       var lines = [
         "Engine: Lottie  Case: \(currentBenchmarkCase.titleLabel)",
         "Animations: x\(currentSceneCount)"
       ]
+      lines.append("Rendering engine: mainThread")
       lines.append("Assets: \(assetSummary(for: currentSceneCount))")
       lines.append("Main thread FPS: \(formatFps(mainThreadFps))")
       text = lines.joined(separator: "\n")
@@ -610,14 +582,6 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
 
   private func benchmarkCaseForCount(_ count: Int) -> BenchmarkCase {
     Self.benchmarkCases.first { $0.animationCount == count } ?? Self.benchmarkCases[0]
-  }
-
-  private func averagePositive(_ values: [Double]) -> Double {
-    let positiveValues = values.filter { $0 > 0 }
-    guard !positiveValues.isEmpty else {
-      return 0
-    }
-    return positiveValues.reduce(0, +) / Double(positiveValues.count)
   }
 
   private func formatFps(_ fps: Double) -> String {

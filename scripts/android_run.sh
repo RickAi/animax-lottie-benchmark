@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 ADB="${ADB:-adb}"
 ENGINE="animax"
-COUNT="8"
+COUNT="1"
 CASE_ID=""
 ANIMAX_MULTITHREAD="false"
 ANIMAX_IMAGE_MODE="false"
@@ -18,8 +18,8 @@ Usage: $0 [options]
 
 Options:
   --engine NAME   animax or lottie. Default: animax.
-  --count N       8, 12, 16, or 20. Default: 8.
-  --case ID       count-8, count-12, count-16, or count-20.
+  --count N       1, 4, 8, or 12. Default: 1.
+  --case ID       count-1, count-4, count-8, or count-12.
                   Overrides --count when set.
   --animax-multithread
                   Enable AnimaX multi-thread acceleration. Default: false.
@@ -52,13 +52,13 @@ if [[ "$ENGINE" != "animax" && "$ENGINE" != "lottie" ]]; then
   exit 1
 fi
 
-if [[ -n "$CASE_ID" && "$CASE_ID" != "count-8" && "$CASE_ID" != "count-12" && "$CASE_ID" != "count-16" && "$CASE_ID" != "count-20" ]]; then
-  echo "--case must be count-8, count-12, count-16, or count-20" >&2
+if [[ -n "$CASE_ID" && "$CASE_ID" != "count-1" && "$CASE_ID" != "count-4" && "$CASE_ID" != "count-8" && "$CASE_ID" != "count-12" ]]; then
+  echo "--case must be count-1, count-4, count-8, or count-12" >&2
   exit 1
 fi
 
-if [[ -z "$CASE_ID" && "$COUNT" != "8" && "$COUNT" != "12" && "$COUNT" != "16" && "$COUNT" != "20" ]]; then
-  echo "--count must be 8, 12, 16, or 20" >&2
+if [[ -z "$CASE_ID" && "$COUNT" != "1" && "$COUNT" != "4" && "$COUNT" != "8" && "$COUNT" != "12" ]]; then
+  echo "--count must be 1, 4, 8, or 12" >&2
   exit 1
 fi
 

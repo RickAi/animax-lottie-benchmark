@@ -19,8 +19,6 @@ import com.airbnb.lottie.AsyncUpdates;
 import com.airbnb.lottie.LottieAnimationView;
 import com.airbnb.lottie.RenderMode;
 import com.lynx.animax.ability.NativeAbility;
-import com.lynx.animax.listener.AnimaXFPSParam;
-import com.lynx.animax.listener.AnimationListenerAdapter;
 import com.lynx.animax.ui.AnimaXContext;
 import com.lynx.animax.ui.AnimaXImageView;
 import com.lynx.animax.ui.AnimaXView;
@@ -48,19 +46,16 @@ public final class BenchmarkActivity extends Activity {
   private static final int MAX_COLUMNS = 4;
   private static final int MAX_ROWS = 5;
   private static final int FIXED_GRID_CAPACITY = MAX_COLUMNS * MAX_ROWS;
-  private static final long ANIMAX_FPS_INTERVAL_MS = 1000L;
   private static final BenchmarkCase[] BENCHMARK_CASES = {
+      BenchmarkCase.renderCount("count-1", "x1", 1),
+      BenchmarkCase.renderCount("count-4", "x4", 4),
       BenchmarkCase.renderCount("count-8", "x8", 8),
-      BenchmarkCase.renderCount("count-12", "x12", 12),
-      BenchmarkCase.renderCount("count-16", "x16", 16),
-      BenchmarkCase.renderCount("count-20", "x20", 20)
+      BenchmarkCase.renderCount("count-12", "x12", 12)
   };
 
   private final MainThreadFpsMonitor mainThreadFpsMonitor = new MainThreadFpsMonitor();
   private final List<IAnimaXView> animaxViews = new ArrayList<>();
-  private final List<AnimationListenerAdapter> animaxListeners = new ArrayList<>();
   private final List<LottieAnimationView> lottieViews = new ArrayList<>();
-  private final List<Float> animaxGpuFpsValues = new ArrayList<>();
   private final List<String> caseAssetPaths = new ArrayList<>();
 
   private CheckBox animaxCheckBox;
@@ -79,7 +74,6 @@ public final class BenchmarkActivity extends Activity {
   private boolean animaxImageModeEnabled;
   private boolean lottieAsyncUpdatesEnabled;
   private float mainThreadFps;
-  private float animaxGpuFps;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -87,7 +81,7 @@ public final class BenchmarkActivity extends Activity {
     try {
       loadCaseAssets();
       assetStatus = "Loaded " + caseAssetPaths.size()
-          + " local asset. x8/x12/x16/x20 use " + HEAVY_MATTE_MASK_ASSET_PATH + ".";
+          + " local asset. x1/x4/x8/x12 use " + HEAVY_MATTE_MASK_ASSET_PATH + ".";
     } catch (Exception e) {
       assetStatus = "Failed to load local assets: " + e.getMessage();
     }
@@ -257,7 +251,6 @@ public final class BenchmarkActivity extends Activity {
     currentSceneEngine = engine;
     currentBenchmarkCase = benchmarkCase;
     mainThreadFps = 0f;
-    animaxGpuFps = 0f;
 
     LinearLayout root = new LinearLayout(this);
     root.setOrientation(LinearLayout.VERTICAL);
@@ -333,7 +326,7 @@ public final class BenchmarkActivity extends Activity {
     for (int i = 0; i < count; i++) {
       String assetPath = assetPathForIndex(i);
       View animationView = ENGINE_ANIMAX.equals(engine)
-          ? createAnimaxView(i, assetPath)
+          ? createAnimaxView(assetPath)
           : createLottieView(assetPath);
       FrameLayout tile = new ClipFrameLayout(this);
       tile.setClipChildren(true);
@@ -350,7 +343,7 @@ public final class BenchmarkActivity extends Activity {
     }
   }
 
-  private View createAnimaxView(int index, String assetPath) {
+  private View createAnimaxView(String assetPath) {
     AnimaXContext animaxContext = new AnimaXContext.Builder(new NativeAbility(), this)
         .multiThreadAccelerate(animaxMultiThreadEnabled)
         .build();
@@ -361,22 +354,8 @@ public final class BenchmarkActivity extends Activity {
     player.setObjectFit(ObjectFit.CONTAIN);
     player.setAutoPlay(true);
     player.setLoop(true);
-    player.setFpsEventInterval(ANIMAX_FPS_INTERVAL_MS);
-    while (animaxGpuFpsValues.size() <= index) {
-      animaxGpuFpsValues.add(0f);
-    }
-    AnimationListenerAdapter listener = new AnimationListenerAdapter() {
-      @Override
-      public void onFPS(AnimaXFPSParam param) {
-        animaxGpuFpsValues.set(index, param.getFPS());
-        animaxGpuFps = averagePositive(animaxGpuFpsValues);
-        updateFpsText(currentSceneEngine, currentBenchmarkCase);
-      }
-    };
-    player.addAnimationListener(listener);
     player.setSrc(UriUtil.fromLocalAsset(assetPath));
     animaxViews.add(view);
-    animaxListeners.add(listener);
     return (View) view;
   }
 
@@ -406,8 +385,7 @@ public final class BenchmarkActivity extends Activity {
       text += "\nMulti thread: " + (animaxMultiThreadEnabled ? "enabled" : "disabled")
           + "\nImage mode: " + (animaxImageModeEnabled ? "enabled" : "disabled")
           + "\nAssets: " + assetSummary(count)
-          + "\nMain thread FPS: " + mainFps
-          + "\nAnimaX GPU FPS: " + formatFps(animaxGpuFps);
+          + "\nMain thread FPS: " + mainFps;
       fpsView.setText(text);
     } else {
       String text = "Engine: Lottie  Case: " + benchmarkCase.titleLabel
@@ -424,9 +402,6 @@ public final class BenchmarkActivity extends Activity {
     for (int i = 0; i < animaxViews.size(); i++) {
       IAnimaXView view = animaxViews.get(i);
       IAnimaXPlayer player = view.getPlayer();
-      if (i < animaxListeners.size()) {
-        player.removeAnimationListener(animaxListeners.get(i));
-      }
       player.stop();
       view.release();
     }
@@ -434,9 +409,7 @@ public final class BenchmarkActivity extends Activity {
       view.cancelAnimation();
     }
     animaxViews.clear();
-    animaxListeners.clear();
     lottieViews.clear();
-    animaxGpuFpsValues.clear();
     if (stage != null) {
       stage.removeAllViews();
     }
@@ -577,18 +550,6 @@ public final class BenchmarkActivity extends Activity {
     return ENGINE_LOTTIE.equals(engine) ? "Lottie" : "AnimaX";
   }
 
-  private static float averagePositive(List<Float> values) {
-    float sum = 0f;
-    int count = 0;
-    for (Float value : values) {
-      if (value != null && value > 0f) {
-        sum += value;
-        count++;
-      }
-    }
-    return count == 0 ? 0f : sum / count;
-  }
-
   private static String formatFps(float fps) {
     if (fps <= 0f) {
       return "--";
@@ -679,7 +640,7 @@ public final class BenchmarkActivity extends Activity {
       long elapsed = frameTimeNanos - windowStartNs;
       if (elapsed >= FPS_WINDOW_NS) {
         if (callback != null) {
-          callback.onFps(frames * (FPS_WINDOW_NS / (float) elapsed));
+          callback.onMainThreadFps(frames * (FPS_WINDOW_NS / (float) elapsed));
         }
         frames = 0;
         windowStartNs = frameTimeNanos;
@@ -688,7 +649,7 @@ public final class BenchmarkActivity extends Activity {
     }
 
     interface Callback {
-      void onFps(float fps);
+      void onMainThreadFps(float fps);
     }
   }
 
