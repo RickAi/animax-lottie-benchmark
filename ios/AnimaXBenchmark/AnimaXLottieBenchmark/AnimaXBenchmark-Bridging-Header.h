@@ -8,5 +8,6 @@
 
 #import <AnimaX/AnimaXAnimationListener.h>
 #import <AnimaX/AnimaXContext.h>
+#import <AnimaX/AnimaXImageView.h>
 #import <AnimaX/AnimaXView.h>
 #import <AnimaX/BaseAnimaXAbility.h>

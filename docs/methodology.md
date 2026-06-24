@@ -9,6 +9,7 @@ The Android app runs a manual multi-instance FPS scenario:
 - x1, x5, x10, x20, x40, and x60 render-count buttons.
 - One selected engine at a time: AnimaX or Lottie.
 - An AnimaX-only multi-thread checkbox that maps to `AnimaXContext.Builder(...).multiThreadAccelerate(...)`.
+- An AnimaX-only image mode checkbox that creates `AnimaXImageView` instead of `AnimaXView`.
 - Local-only animation assets loaded from the APK.
 - Autoplay and loop enabled for every instance.
 - x1/x5/x10/x20 use different local JSON files selected from the manifest.
@@ -25,6 +26,7 @@ The iOS app mirrors the Android manual multi-instance FPS scenario:
 - x1, x5, x10, x20, x40, and x60 render-count buttons.
 - One selected engine at a time: AnimaX or Lottie.
 - An AnimaX-only multi-thread checkbox that maps to `AnimaXContext.enableMultiThreadAccelerate`.
+- An AnimaX-only image mode checkbox that creates `AnimaXImageView` instead of `AnimaXView`.
 - Local-only animation assets loaded from the app bundle.
 - Autoplay and loop enabled for every instance.
 - x1/x5/x10/x20 use different local JSON files selected from the manifest.

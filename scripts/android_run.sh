@@ -6,6 +6,7 @@ ADB="${ADB:-adb}"
 ENGINE="animax"
 COUNT="1"
 ANIMAX_MULTITHREAD="false"
+ANIMAX_IMAGE_MODE="false"
 BUILD_ONLY=0
 HOME_ONLY=0
 
@@ -18,6 +19,8 @@ Options:
   --count N       1, 5, 10, 20, 40, or 60. Default: 1.
   --animax-multithread
                   Enable AnimaX multi-thread acceleration. Default: false.
+  --animax-image-mode
+                  Use AnimaXImageView instead of AnimaXView. Default: false.
   --home          Launch the home screen instead of a scene.
   --build-only    Build APK but do not install/run.
 EOF
@@ -28,6 +31,7 @@ while [[ $# -gt 0 ]]; do
     --engine) ENGINE="$2"; shift 2 ;;
     --count) COUNT="$2"; shift 2 ;;
     --animax-multithread) ANIMAX_MULTITHREAD="true"; shift ;;
+    --animax-image-mode) ANIMAX_IMAGE_MODE="true"; shift ;;
     --home) HOME_ONLY=1; shift ;;
     --build-only) BUILD_ONLY=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -94,6 +98,7 @@ else
     --ez autorun true \
     --es engine "$ENGINE" \
     --ei count "$COUNT" \
-    --ez animaxMultiThread "$ANIMAX_MULTITHREAD" >/dev/null
+    --ez animaxMultiThread "$ANIMAX_MULTITHREAD" \
+    --ez animaxImageMode "$ANIMAX_IMAGE_MODE" >/dev/null
   echo "Launched $ENGINE x$COUNT scene"
 fi

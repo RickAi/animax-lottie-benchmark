@@ -21,7 +21,10 @@ import com.lynx.animax.ability.NativeAbility;
 import com.lynx.animax.listener.AnimaXFPSParam;
 import com.lynx.animax.listener.AnimationListenerAdapter;
 import com.lynx.animax.ui.AnimaXContext;
+import com.lynx.animax.ui.AnimaXImageView;
 import com.lynx.animax.ui.AnimaXView;
+import com.lynx.animax.ui.IAnimaXPlayer;
+import com.lynx.animax.ui.IAnimaXView;
 import com.lynx.animax.ui.ObjectFit;
 import com.lynx.animax.util.UriUtil;
 import java.io.BufferedReader;
@@ -47,7 +50,7 @@ public final class BenchmarkActivity extends Activity {
   private static final long ANIMAX_FPS_INTERVAL_MS = 1000L;
 
   private final MainThreadFpsMonitor mainThreadFpsMonitor = new MainThreadFpsMonitor();
-  private final List<AnimaXView> animaxViews = new ArrayList<>();
+  private final List<IAnimaXView> animaxViews = new ArrayList<>();
   private final List<AnimationListenerAdapter> animaxListeners = new ArrayList<>();
   private final List<LottieAnimationView> lottieViews = new ArrayList<>();
   private final List<Float> animaxGpuFpsValues = new ArrayList<>();
@@ -56,6 +59,7 @@ public final class BenchmarkActivity extends Activity {
   private CheckBox animaxCheckBox;
   private CheckBox lottieCheckBox;
   private CheckBox animaxMultiThreadCheckBox;
+  private CheckBox animaxImageModeCheckBox;
   private TextView fpsView;
   private FrameLayout stage;
   private String selectedEngine = ENGINE_ANIMAX;
@@ -64,6 +68,7 @@ public final class BenchmarkActivity extends Activity {
   private int currentSceneCount = 1;
   private boolean showingScene;
   private boolean animaxMultiThreadEnabled;
+  private boolean animaxImageModeEnabled;
   private float mainThreadFps;
   private float animaxGpuFps;
 
@@ -78,6 +83,7 @@ public final class BenchmarkActivity extends Activity {
       assetStatus = "Failed to load local assets: " + e.getMessage();
     }
     animaxMultiThreadEnabled = getIntent().getBooleanExtra("animaxMultiThread", false);
+    animaxImageModeEnabled = getIntent().getBooleanExtra("animaxImageMode", false);
     showHome();
     if (getIntent().getBooleanExtra("autorun", false)) {
       String engine = getIntent().getStringExtra("engine");
@@ -148,7 +154,16 @@ public final class BenchmarkActivity extends Activity {
         animaxMultiThreadEnabled = animaxMultiThreadCheckBox.isChecked());
     root.addView(animaxMultiThreadCheckBox, new LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
-    updateAnimaxMultiThreadVisibility();
+
+    animaxImageModeCheckBox = new CheckBox(this);
+    animaxImageModeCheckBox.setText("Enable image mode");
+    animaxImageModeCheckBox.setTextSize(16);
+    animaxImageModeCheckBox.setChecked(animaxImageModeEnabled);
+    animaxImageModeCheckBox.setOnClickListener(v ->
+        animaxImageModeEnabled = animaxImageModeCheckBox.isChecked());
+    root.addView(animaxImageModeCheckBox, new LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+    updateAnimaxOptionVisibility();
 
     LinearLayout buttonGrid = new LinearLayout(this);
     buttonGrid.setOrientation(LinearLayout.VERTICAL);
@@ -190,7 +205,7 @@ public final class BenchmarkActivity extends Activity {
     if (lottieCheckBox != null) {
       lottieCheckBox.setChecked(ENGINE_LOTTIE.equals(engine));
     }
-    updateAnimaxMultiThreadVisibility();
+    updateAnimaxOptionVisibility();
   }
 
   private void showScene(String engine, int count) {
@@ -239,7 +254,7 @@ public final class BenchmarkActivity extends Activity {
     fpsView.setPadding(dp(16), dp(8), dp(16), dp(8));
     fpsView.setBackgroundColor(0xff222222);
     root.addView(fpsView, new LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT, dp(112)));
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(136)));
 
     stage = new FrameLayout(this);
     stage.setBackgroundColor(0xfff4f4f4);
@@ -296,11 +311,14 @@ public final class BenchmarkActivity extends Activity {
     AnimaXContext animaxContext = new AnimaXContext.Builder(new NativeAbility(), this)
         .multiThreadAccelerate(animaxMultiThreadEnabled)
         .build();
-    AnimaXView view = new AnimaXView(animaxContext);
-    view.setObjectFit(ObjectFit.CONTAIN);
-    view.setAutoPlay(true);
-    view.setLoop(true);
-    view.setFpsEventInterval(ANIMAX_FPS_INTERVAL_MS);
+    IAnimaXView view = animaxImageModeEnabled
+        ? new AnimaXImageView(animaxContext)
+        : new AnimaXView(animaxContext);
+    IAnimaXPlayer player = view.getPlayer();
+    player.setObjectFit(ObjectFit.CONTAIN);
+    player.setAutoPlay(true);
+    player.setLoop(true);
+    player.setFpsEventInterval(ANIMAX_FPS_INTERVAL_MS);
     while (animaxGpuFpsValues.size() <= index) {
       animaxGpuFpsValues.add(0f);
     }
@@ -312,11 +330,11 @@ public final class BenchmarkActivity extends Activity {
         updateFpsText(currentSceneEngine, currentSceneCount);
       }
     };
-    view.addAnimationListener(listener);
-    view.setSrc(UriUtil.fromLocalAsset(assetPath));
+    player.addAnimationListener(listener);
+    player.setSrc(UriUtil.fromLocalAsset(assetPath));
     animaxViews.add(view);
     animaxListeners.add(listener);
-    return view;
+    return (View) view;
   }
 
   private View createLottieView(String assetPath) {
@@ -340,6 +358,7 @@ public final class BenchmarkActivity extends Activity {
     if (ENGINE_ANIMAX.equals(engine)) {
       fpsView.setText("Engine: AnimaX  Count: x" + count
           + "\nMulti thread: " + (animaxMultiThreadEnabled ? "enabled" : "disabled")
+          + "\nImage mode: " + (animaxImageModeEnabled ? "enabled" : "disabled")
           + "\nAssets: " + assetSummary(count)
           + "\nMain thread FPS: " + mainFps
           + "\nAnimaX GPU FPS: " + formatFps(animaxGpuFps));
@@ -353,11 +372,12 @@ public final class BenchmarkActivity extends Activity {
   private void releaseScene() {
     mainThreadFpsMonitor.stop();
     for (int i = 0; i < animaxViews.size(); i++) {
-      AnimaXView view = animaxViews.get(i);
+      IAnimaXView view = animaxViews.get(i);
+      IAnimaXPlayer player = view.getPlayer();
       if (i < animaxListeners.size()) {
-        view.removeAnimationListener(animaxListeners.get(i));
+        player.removeAnimationListener(animaxListeners.get(i));
       }
-      view.stop();
+      player.stop();
       view.release();
     }
     for (LottieAnimationView view : lottieViews) {
@@ -420,13 +440,16 @@ public final class BenchmarkActivity extends Activity {
     return 1;
   }
 
-  private void updateAnimaxMultiThreadVisibility() {
-    if (animaxMultiThreadCheckBox == null) {
-      return;
-    }
+  private void updateAnimaxOptionVisibility() {
     boolean animaxSelected = ENGINE_ANIMAX.equals(selectedEngine);
-    animaxMultiThreadCheckBox.setVisibility(animaxSelected ? View.VISIBLE : View.GONE);
-    animaxMultiThreadCheckBox.setEnabled(animaxSelected);
+    if (animaxMultiThreadCheckBox != null) {
+      animaxMultiThreadCheckBox.setVisibility(animaxSelected ? View.VISIBLE : View.GONE);
+      animaxMultiThreadCheckBox.setEnabled(animaxSelected);
+    }
+    if (animaxImageModeCheckBox != null) {
+      animaxImageModeCheckBox.setVisibility(animaxSelected ? View.VISIBLE : View.GONE);
+      animaxImageModeCheckBox.setEnabled(animaxSelected);
+    }
   }
 
   private GridSpec gridSpecFor(int count, int stageWidth, int stageHeight) {

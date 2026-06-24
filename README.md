@@ -4,8 +4,8 @@ Native case runner for comparing [AnimaX](https://github.com/lynx-family/animax)
 
 The repository is intentionally client-only:
 
-- Android uses `AnimaXView` and `LottieAnimationView` in the same native View host.
-- iOS uses `AnimaXView` and `LottieAnimationView` in the same UIKit host.
+- Android uses `AnimaXView` or `AnimaXImageView` and `LottieAnimationView` in the same native View host.
+- iOS uses `AnimaXView` or `AnimaXImageView` and `LottieAnimationView` in the same UIKit host.
 - AnimaX is integrated through published Android Maven artifacts and iOS CocoaPods, not through an in-repository source checkout.
 - All Lottie JSON cases live under [assets/lotties](assets/lotties); no test path downloads animation data at runtime.
 
@@ -15,7 +15,7 @@ The checked-in Android and iOS apps focus on steady-state multi-instance renderi
 
 - Show a home screen with x1, x5, x10, x20, x40, and x60 render-count buttons.
 - Let the user choose AnimaX or Lottie with checkboxes.
-- Show an AnimaX-only "Enable multi thread" checkbox. Android maps it to `AnimaXContext.Builder(...).multiThreadAccelerate(...)`; iOS maps it to `AnimaXContext.enableMultiThreadAccelerate`.
+- Show AnimaX-only "Enable multi thread" and "Enable image mode" checkboxes. Multi-thread maps to `AnimaXContext.Builder(...).multiThreadAccelerate(...)` on Android and `AnimaXContext.enableMultiThreadAccelerate` on iOS. Image mode creates `AnimaXImageView` instead of `AnimaXView`.
 - Open a dedicated render page where all animations autoplay and loop.
 - Keep x1/x5/x10/x20 on the fixed x20-derived grid, and shrink x40/x60 tiles with dynamic grids that fill the stage.
 - Use different local Lottie JSON files for x1/x5/x10/x20, then repeat local files for x40/x60 pressure cases.
@@ -64,7 +64,7 @@ adb install -r app/build/outputs/apk/noasan/debug/app-noasan-debug.apk
 Launch an Android scene from the command line:
 
 ```sh
-../scripts/android_run.sh --engine animax --count 60 --animax-multithread
+../scripts/android_run.sh --engine animax --count 60 --animax-multithread --animax-image-mode
 ```
 
 The Android Lottie dependency defaults to `com.airbnb.android:lottie:6.7.1`, verified from Maven Central.
@@ -84,7 +84,7 @@ The default `lottie-ios` version is `4.6.1`.
 Run manually from Xcode, or pass launch arguments:
 
 ```text
---autorun --engine=animax --count=20 --animax-multithread
+--autorun --engine=animax --count=20 --animax-multithread --animax-image-mode
 ```
 
 Use `--engine=lottie` and any supported `--count=1|5|10|20|40|60` for Lottie scenes.

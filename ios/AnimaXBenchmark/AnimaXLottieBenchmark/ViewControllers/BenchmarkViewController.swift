@@ -41,13 +41,14 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
   private let stage = UIView()
 
   private var caseSpecs: [CaseSpec] = []
-  private var animaxViews: [AnimaXView] = []
+  private var animaxViews: [UIView & AnimaXPlayerProtocol] = []
   private var lottieViews: [LottieAnimationView] = []
   private var animaxGpuFpsValues: [String: Double] = [:]
 
   private var animaxButton: UIButton?
   private var lottieButton: UIButton?
   private var animaxMultiThreadButton: UIButton?
+  private var animaxImageModeButton: UIButton?
   private var fpsLabel: UILabel?
 
   private var selectedEngine: Engine = .animax
@@ -56,6 +57,7 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
   private var currentSceneEngine: Engine = .animax
   private var currentSceneCount = 1
   private var animaxMultiThreadEnabled = false
+  private var animaxImageModeEnabled = false
   private var mainThreadFps = 0.0
   private var animaxGpuFps = 0.0
   private var needsStagePopulation = false
@@ -110,6 +112,9 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
       } else if argument == "--animax-multithread"
           || argument == "--animax-multithread=true" {
         animaxMultiThreadEnabled = true
+      } else if argument == "--animax-image-mode"
+          || argument == "--animax-image-mode=true" {
+        animaxImageModeEnabled = true
       }
     }
   }
@@ -153,6 +158,13 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     )
     stack.addArrangedSubview(animaxMultiThreadButton!)
     animaxMultiThreadButton!.heightAnchor.constraint(equalToConstant: 48).isActive = true
+
+    animaxImageModeButton = makeCheckButton(
+      title: "Enable image mode",
+      action: #selector(animaxImageModeToggled)
+    )
+    stack.addArrangedSubview(animaxImageModeButton!)
+    animaxImageModeButton!.heightAnchor.constraint(equalToConstant: 48).isActive = true
 
     let buttonGrid = UIStackView()
     buttonGrid.axis = .vertical
@@ -256,7 +268,7 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     fpsLabel.translatesAutoresizingMaskIntoConstraints = false
     self.fpsLabel = fpsLabel
     stack.addArrangedSubview(fpsLabel)
-    fpsLabel.heightAnchor.constraint(equalToConstant: 112).isActive = true
+    fpsLabel.heightAnchor.constraint(equalToConstant: 136).isActive = true
 
     stage.backgroundColor = UIColor(white: 0.96, alpha: 1.0)
     stage.clipsToBounds = true
@@ -330,7 +342,12 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     let context = AnimaXContext(ability: BaseAnimaXAbility())
     context.enableMultiThreadAccelerate = animaxMultiThreadEnabled
 
-    let animaxView = AnimaXView(context: context)
+    let animaxView: UIView & AnimaXPlayerProtocol
+    if animaxImageModeEnabled {
+      animaxView = AnimaXImageView(context: context)
+    } else {
+      animaxView = AnimaXView(context: context)
+    }
     animaxView.setLoop(true)
     animaxView.setAutoplay(true)
     animaxView.setObjectfit("contain")
@@ -405,6 +422,7 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
       text = """
       Engine: AnimaX  Count: x\(currentSceneCount)
       Multi thread: \(animaxMultiThreadEnabled ? "enabled" : "disabled")
+      Image mode: \(animaxImageModeEnabled ? "enabled" : "disabled")
       Assets: \(assetSummary(for: currentSceneCount))
       Main thread FPS: \(formatFps(mainThreadFps))
       AnimaX GPU FPS: \(formatFps(animaxGpuFps))
@@ -423,7 +441,9 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     updateCheckButton(animaxButton, selected: selectedEngine == .animax)
     updateCheckButton(lottieButton, selected: selectedEngine == .lottie)
     updateCheckButton(animaxMultiThreadButton, selected: animaxMultiThreadEnabled)
+    updateCheckButton(animaxImageModeButton, selected: animaxImageModeEnabled)
     animaxMultiThreadButton?.isHidden = selectedEngine != .animax
+    animaxImageModeButton?.isHidden = selectedEngine != .animax
   }
 
   private func loadCaseSpecs() {
@@ -583,6 +603,11 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
 
   @objc private func animaxMultiThreadToggled() {
     animaxMultiThreadEnabled.toggle()
+    updateHomeControls()
+  }
+
+  @objc private func animaxImageModeToggled() {
+    animaxImageModeEnabled.toggle()
     updateHomeControls()
   }
 
