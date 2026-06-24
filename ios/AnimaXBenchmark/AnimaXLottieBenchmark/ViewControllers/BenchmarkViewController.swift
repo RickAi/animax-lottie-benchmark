@@ -353,7 +353,7 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     animaxView.setObjectfit("contain")
     animaxView.setFPSEventInterval(Self.animaxFpsIntervalMs)
     animaxView.addAnimationEventListener(self)
-    animaxView.setJson(try stringForAsset(assetPath))
+    animaxView.setSrc(try srcForAsset(assetPath), in: Bundle.main)
     animaxViews.append(animaxView)
     return animaxView
   }
@@ -484,12 +484,11 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     return try Data(contentsOf: url)
   }
 
-  private func stringForAsset(_ assetPath: String) throws -> String {
-    let data = try dataForAsset(assetPath)
-    guard let text = String(data: data, encoding: .utf8) else {
-      throw benchmarkError("case is not UTF-8: \(assetPath)")
+  private func srcForAsset(_ assetPath: String) throws -> String {
+    guard let url = urlForAsset(assetPath) else {
+      throw benchmarkError("case not found: \(assetPath)")
     }
-    return text
+    return url.path
   }
 
   private func urlForAsset(_ assetPath: String) -> URL? {
