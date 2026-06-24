@@ -51,8 +51,8 @@ public final class BenchmarkActivity extends Activity {
   private static final int MIN_UNIQUE_CASES = MAX_COLUMNS * MAX_ROWS;
   private static final long ANIMAX_FPS_INTERVAL_MS = 1000L;
   private static final BenchmarkCase[] BENCHMARK_CASES = {
-      BenchmarkCase.mainThreadBusy("busy-light", "Busy light", 20, 100, 20),
-      BenchmarkCase.mainThreadBusy("busy-heavy", "Busy heavy", 20, 100, 50),
+      BenchmarkCase.mainThreadBusy("main-thread-30", "30% main thread", 20, 100, 30),
+      BenchmarkCase.mainThreadBusy("main-thread-70", "70% main thread", 20, 100, 70),
       BenchmarkCase.renderCount("count-1", "x1", 1),
       BenchmarkCase.renderCount("count-10", "x10", 10),
       BenchmarkCase.renderCount("count-20", "x20", 20),
