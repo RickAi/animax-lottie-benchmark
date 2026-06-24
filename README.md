@@ -110,12 +110,12 @@ Both columns below are the in-app main-thread FPS values shown after entering th
 | --- | --- | ---: | --- | ---: |
 | x1 | <img src="docs/screenshots/android/animax_x1_multi_thread_image_mode.png" width="88" alt="AnimaX Android x1 multi thread image mode"> | 60.0 | <img src="docs/screenshots/android/lottie_x1_async_update.png" width="88" alt="Lottie Android x1 async update"> | 60.0 |
 | x4 | <img src="docs/screenshots/android/animax_x4_multi_thread_image_mode.png" width="88" alt="AnimaX Android x4 multi thread image mode"> | 60.0 | <img src="docs/screenshots/android/lottie_x4_async_update.png" width="88" alt="Lottie Android x4 async update"> | 60.0 |
-| x8 | <img src="docs/screenshots/android/animax_x8_multi_thread_image_mode.png" width="88" alt="AnimaX Android x8 multi thread image mode"> | 50.2 | <img src="docs/screenshots/android/lottie_x8_async_update.png" width="88" alt="Lottie Android x8 async update"> | 37.4 |
+| x8 | <img src="docs/screenshots/android/animax_x8_multi_thread_image_mode.png" width="88" alt="AnimaX Android x8 multi thread image mode"> | 60.0 | <img src="docs/screenshots/android/lottie_x8_async_update.png" width="88" alt="Lottie Android x8 async update"> | 38.4 |
 | x12 | <img src="docs/screenshots/android/animax_x12_multi_thread_image_mode.png" width="88" alt="AnimaX Android x12 multi thread image mode"> | 60.0 | <img src="docs/screenshots/android/lottie_x12_async_update.png" width="88" alt="Lottie Android x12 async update"> | 25.6 |
 
 Observed from these screenshots:
 
-- AnimaX Android main-thread FPS stays at 60.0 FPS in x1, x4, and x12 in this snapshot; x8 reports 50.2 FPS.
+- AnimaX Android main-thread FPS stays at 60.0 FPS in all four scenes in this snapshot.
 - Lottie Android main-thread FPS drops in the higher instance-count scenes in this snapshot.
 
 ### iOS Snapshot Results
