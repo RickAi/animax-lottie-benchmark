@@ -71,7 +71,7 @@ The Android Lottie dependency defaults to `com.airbnb.android:lottie:6.7.1`, ver
 
 ## iOS
 
-The iOS app uses the published `AnimaX` CocoaPod with the same subspec shape as the AnimaX binary demo, plus `lottie-ios`.
+The iOS app uses the published `AnimaX` CocoaPod with the required rendering subspecs, plus `lottie-ios`.
 
 ```sh
 cd ios/AnimaXBenchmark
@@ -79,7 +79,7 @@ cd ios/AnimaXBenchmark
 xcodebuild -workspace AnimaXLottieBenchmark.xcworkspace -scheme AnimaXLottieBenchmark -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build
 ```
 
-The default `lottie-ios` version is `4.6.1`, matching the current GitHub/CocoaPods release metadata checked while scaffolding this repo.
+The default `lottie-ios` version is `4.6.1`.
 
 Run manually from Xcode, or pass launch arguments:
 
@@ -89,12 +89,6 @@ Run manually from Xcode, or pass launch arguments:
 
 Use `--engine=lottie` and any supported `--count=1|5|10|20|40|60` for Lottie scenes.
 
-## Result Summary
+## Results
 
-The app keeps FPS display in-app and leaves memory, CPU, frame intervals, hitches, and trace analysis to host-side profilers. The legacy summary helper remains useful for older exported JSON runs:
-
-```sh
-python3 scripts/summarize_results.py path/to/results/*.json
-```
-
-Performance metrics should come from the PC-side profiler output captured during the same run.
+The app keeps FPS display in-app and leaves memory, CPU, frame intervals, hitches, and trace analysis to host-side profilers. Performance metrics should come from the PC-side profiler output captured during the same run.

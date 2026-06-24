@@ -1,4 +1,4 @@
-# Xcode user specific
+# Xcode user files
 *.pbxuser
 !default.pbxuser
 *.mode1v3
@@ -22,9 +22,3 @@ xcuserdata/
 # CocoaPods
 Pods/
 Podfile.lock
-
-# Project specific
-/water/
-/water_fault/
-/embed_font/
-*.zip
