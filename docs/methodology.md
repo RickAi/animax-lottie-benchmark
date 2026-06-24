@@ -6,14 +6,17 @@ This repo separates case orchestration from performance measurement.
 
 The Android app runs a manual multi-instance FPS scenario:
 
-- x1, x5, x10, x20, x40, and x60 render-count buttons.
+- x1, Busy light, x10, x20, Busy heavy, and x60 buttons.
 - One selected engine at a time: AnimaX or Lottie.
 - An AnimaX-only multi-thread checkbox that maps to `AnimaXContext.Builder(...).multiThreadAccelerate(...)`.
 - An AnimaX-only image mode checkbox that creates `AnimaXImageView` instead of `AnimaXView`.
 - Local-only animation assets loaded from the APK.
 - Autoplay and loop enabled for every instance.
-- x1/x5/x10/x20 use different local JSON files selected from the manifest.
-- x40/x60 repeat local JSON files and shrink tiles with dynamic grids so the stage is filled without overflow.
+- x1/x10/x20 and the two busy cases use different local JSON files selected from the manifest.
+- x60 repeats local JSON files and shrinks tiles with a dynamic grid so the stage is filled without overflow.
+- Busy light renders x20 animations and runs a 20 ms UI-thread busy-spin block every 100 ms.
+- Busy heavy renders x20 animations and runs a 50 ms UI-thread busy-spin block every 100 ms.
+- Busy strategy text is shown on the render page for profiler trace alignment.
 - Main-thread FPS sampled with `Choreographer`.
 - AnimaX GPU/offscreen FPS sampled through `AnimationListenerAdapter.onFPS` after `setFpsEventInterval(1000)`.
 

@@ -13,12 +13,14 @@ The repository is intentionally client-only:
 
 The checked-in Android and iOS apps focus on steady-state multi-instance rendering:
 
-- Show a home screen with x1, x5, x10, x20, x40, and x60 render-count buttons.
+- Android shows x1, Busy light, x10, x20, Busy heavy, and x60 buttons.
+- The Android Busy light case renders x20 animations while running a 20 ms UI-thread busy-spin block every 100 ms. The Busy heavy case renders x20 animations while running a 50 ms UI-thread busy-spin block every 100 ms. The active strategy is shown on the render page.
+- iOS shows x1, x5, x10, x20, x40, and x60 render-count buttons.
 - Let the user choose AnimaX or Lottie with checkboxes.
 - Show AnimaX-only "Enable multi thread" and "Enable image mode" checkboxes. Multi-thread maps to `AnimaXContext.Builder(...).multiThreadAccelerate(...)` on Android and `AnimaXContext.enableMultiThreadAccelerate` on iOS. Image mode creates `AnimaXImageView` instead of `AnimaXView`.
 - Open a dedicated render page where all animations autoplay and loop.
-- Keep x1/x5/x10/x20 on the fixed x20-derived grid, and shrink x40/x60 tiles with dynamic grids that fill the stage.
-- Use different local Lottie JSON files for x1/x5/x10/x20, then repeat local files for x40/x60 pressure cases.
+- Keep x1/x10/x20 and Android busy cases on the fixed x20-derived grid, and shrink high-count tiles with dynamic grids that fill the stage.
+- Use different local Lottie JSON files for x1/x10/x20 and Android busy cases, then repeat local files for high-count pressure cases.
 - Show main-thread FPS for both engines.
 - Show AnimaX GPU/offscreen FPS from `AnimationListenerAdapter.onFPS` on Android and `AnimaXAnimationListener.onFps` on iOS after setting a 1000 ms FPS event interval.
 
@@ -28,7 +30,7 @@ Collect memory, CPU, frame interval, and latency metrics from PC-side tooling su
 
 ## Cases
 
-The default case manifest is [assets/manifest.json](assets/manifest.json). It currently uses 20 Apache-2.0 sample files from the official Airbnb Lottie Android/iOS repositories. The Android x1/x5/x10/x20 scenes use unique files from this manifest. The x40 and x60 scenes repeat the same local files to build higher instance-count pressure cases.
+The default case manifest is [assets/manifest.json](assets/manifest.json). It currently uses 20 Apache-2.0 sample files from the official Airbnb Lottie Android/iOS repositories. The Android x1/x10/x20 and main-thread busy scenes use unique files from this manifest. The Android x60 scene repeats the same local files to build a higher instance-count pressure case.
 
 - `hamburger_arrow`: small path morph.
 - `lottie_logo_2`: complex logo, many layers.
@@ -65,7 +67,10 @@ Launch an Android scene from the command line:
 
 ```sh
 ../scripts/android_run.sh --engine animax --count 60 --animax-multithread --animax-image-mode
+../scripts/android_run.sh --engine lottie --case busy-heavy
 ```
+
+Android supported count cases are `1`, `10`, `20`, and `60`. Use `--case busy-light` or `--case busy-heavy` to run the main-thread busy cases directly.
 
 The Android Lottie dependency defaults to `com.airbnb.android:lottie:6.7.1`, verified from Maven Central.
 

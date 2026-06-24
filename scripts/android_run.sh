@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 ADB="${ADB:-adb}"
 ENGINE="animax"
 COUNT="1"
+CASE_ID=""
 ANIMAX_MULTITHREAD="false"
 ANIMAX_IMAGE_MODE="false"
 BUILD_ONLY=0
@@ -16,7 +17,9 @@ Usage: $0 [options]
 
 Options:
   --engine NAME   animax or lottie. Default: animax.
-  --count N       1, 5, 10, 20, 40, or 60. Default: 1.
+  --count N       1, 10, 20, or 60. Default: 1.
+  --case ID       count-1, count-10, count-20, count-60, busy-light, or busy-heavy.
+                  Overrides --count when set.
   --animax-multithread
                   Enable AnimaX multi-thread acceleration. Default: false.
   --animax-image-mode
@@ -30,6 +33,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --engine) ENGINE="$2"; shift 2 ;;
     --count) COUNT="$2"; shift 2 ;;
+    --case) CASE_ID="$2"; shift 2 ;;
     --animax-multithread) ANIMAX_MULTITHREAD="true"; shift ;;
     --animax-image-mode) ANIMAX_IMAGE_MODE="true"; shift ;;
     --home) HOME_ONLY=1; shift ;;
@@ -44,8 +48,13 @@ if [[ "$ENGINE" != "animax" && "$ENGINE" != "lottie" ]]; then
   exit 1
 fi
 
-if [[ "$COUNT" != "1" && "$COUNT" != "5" && "$COUNT" != "10" && "$COUNT" != "20" && "$COUNT" != "40" && "$COUNT" != "60" ]]; then
-  echo "--count must be 1, 5, 10, 20, 40, or 60" >&2
+if [[ -n "$CASE_ID" && "$CASE_ID" != "count-1" && "$CASE_ID" != "count-10" && "$CASE_ID" != "count-20" && "$CASE_ID" != "count-60" && "$CASE_ID" != "busy-light" && "$CASE_ID" != "busy-heavy" ]]; then
+  echo "--case must be count-1, count-10, count-20, count-60, busy-light, or busy-heavy" >&2
+  exit 1
+fi
+
+if [[ -z "$CASE_ID" && "$COUNT" != "1" && "$COUNT" != "10" && "$COUNT" != "20" && "$COUNT" != "60" ]]; then
+  echo "--count must be 1, 10, 20, or 60" >&2
   exit 1
 fi
 
@@ -93,12 +102,20 @@ if [[ "$HOME_ONLY" == "1" ]]; then
   "$ADB" shell am start -n com.animax.benchmark/.BenchmarkActivity >/dev/null
   echo "Launched benchmark home screen"
 else
-  "$ADB" shell am start \
-    -n com.animax.benchmark/.BenchmarkActivity \
-    --ez autorun true \
-    --es engine "$ENGINE" \
-    --ei count "$COUNT" \
-    --ez animaxMultiThread "$ANIMAX_MULTITHREAD" \
-    --ez animaxImageMode "$ANIMAX_IMAGE_MODE" >/dev/null
-  echo "Launched $ENGINE x$COUNT scene"
+  start_args=(
+    -n com.animax.benchmark/.BenchmarkActivity
+    --ez autorun true
+    --es engine "$ENGINE"
+    --ez animaxMultiThread "$ANIMAX_MULTITHREAD"
+    --ez animaxImageMode "$ANIMAX_IMAGE_MODE"
+  )
+  if [[ -n "$CASE_ID" ]]; then
+    start_args+=(--es caseId "$CASE_ID")
+    scene_label="$CASE_ID"
+  else
+    start_args+=(--ei count "$COUNT")
+    scene_label="x$COUNT"
+  fi
+  "$ADB" shell am start "${start_args[@]}" >/dev/null
+  echo "Launched $ENGINE $scene_label scene"
 fi
