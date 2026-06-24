@@ -13,8 +13,8 @@ The repository is intentionally client-only:
 
 The checked-in Android and iOS apps focus on steady-state multi-instance rendering:
 
-- Android and iOS show 30% main thread, 70% main thread, x1, x10, x20, and x60 buttons.
-- The 30% main thread case renders x20 animations while running a 30 ms UI-thread busy-spin block every 100 ms. The 70% main thread case renders x20 animations while running a 70 ms UI-thread busy-spin block every 100 ms. The active strategy is shown on the render page.
+- Android and iOS show 30% main thread, 90% main thread, x1, x10, x20, and x60 buttons.
+- The 30% main thread case renders x20 animations while running a 30 ms UI-thread busy-spin block every 100 ms. The 90% main thread case renders x20 animations while running a 90 ms UI-thread busy-spin block every 100 ms. The active strategy is shown on the render page.
 - Let the user choose AnimaX or Lottie with checkboxes.
 - Show AnimaX-only "Enable multi thread" and "Enable image mode" checkboxes. Multi-thread maps to `AnimaXContext.Builder(...).multiThreadAccelerate(...)` on Android and `AnimaXContext.enableMultiThreadAccelerate` on iOS. Image mode creates `AnimaXImageView` instead of `AnimaXView`.
 - Open a dedicated render page where all animations autoplay and loop.
@@ -66,10 +66,10 @@ Launch an Android scene from the command line:
 
 ```sh
 ../scripts/android_run.sh --engine animax --count 60 --animax-multithread --animax-image-mode
-../scripts/android_run.sh --engine lottie --case main-thread-70
+../scripts/android_run.sh --engine lottie --case main-thread-90
 ```
 
-Android supported count cases are `1`, `10`, `20`, and `60`. Use `--case main-thread-30` or `--case main-thread-70` to run the main-thread busy cases directly.
+Android supported count cases are `1`, `10`, `20`, and `60`. Use `--case main-thread-30` or `--case main-thread-90` to run the main-thread busy cases directly.
 
 The Android Lottie dependency defaults to `com.airbnb.android:lottie:6.7.1`, verified from Maven Central.
 
@@ -89,10 +89,10 @@ Run manually from Xcode, or pass launch arguments:
 
 ```text
 --autorun --engine=animax --count=20 --animax-multithread --animax-image-mode
---autorun --engine=animax --case=main-thread-70 --animax-multithread --animax-image-mode
+--autorun --engine=animax --case=main-thread-90 --animax-multithread --animax-image-mode
 ```
 
-Use `--engine=lottie` and any supported `--count=1|10|20|60` or `--case=main-thread-30|main-thread-70` for Lottie scenes.
+Use `--engine=lottie` and any supported `--count=1|10|20|60` or `--case=main-thread-30|main-thread-90` for Lottie scenes.
 
 ## Results
 

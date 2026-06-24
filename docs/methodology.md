@@ -6,7 +6,7 @@ This repo separates case orchestration from performance measurement.
 
 The Android app runs a manual multi-instance FPS scenario:
 
-- 30% main thread, 70% main thread, x1, x10, x20, and x60 buttons.
+- 30% main thread, 90% main thread, x1, x10, x20, and x60 buttons.
 - One selected engine at a time: AnimaX or Lottie.
 - An AnimaX-only multi-thread checkbox that maps to `AnimaXContext.Builder(...).multiThreadAccelerate(...)`.
 - An AnimaX-only image mode checkbox that creates `AnimaXImageView` instead of `AnimaXView`.
@@ -15,7 +15,7 @@ The Android app runs a manual multi-instance FPS scenario:
 - x1/x10/x20 and the two busy cases use different local JSON files selected from the manifest.
 - x60 repeats local JSON files and shrinks tiles with a dynamic grid so the stage is filled without overflow.
 - 30% main thread renders x20 animations and runs a 30 ms UI-thread busy-spin block every 100 ms.
-- 70% main thread renders x20 animations and runs a 70 ms UI-thread busy-spin block every 100 ms.
+- 90% main thread renders x20 animations and runs a 90 ms UI-thread busy-spin block every 100 ms.
 - Busy strategy text is shown on the render page for profiler trace alignment.
 - Main-thread FPS sampled with `Choreographer`.
 - AnimaX GPU/offscreen FPS sampled through `AnimationListenerAdapter.onFPS` after `setFpsEventInterval(1000)`.
@@ -26,7 +26,7 @@ Memory is measured from host-side tooling, not in the app.
 
 The iOS app mirrors the Android manual multi-instance FPS scenario:
 
-- 30% main thread, 70% main thread, x1, x10, x20, and x60 buttons.
+- 30% main thread, 90% main thread, x1, x10, x20, and x60 buttons.
 - One selected engine at a time: AnimaX or Lottie.
 - An AnimaX-only multi-thread checkbox that maps to `AnimaXContext.enableMultiThreadAccelerate`.
 - An AnimaX-only image mode checkbox that creates `AnimaXImageView` instead of `AnimaXView`.
@@ -35,7 +35,7 @@ The iOS app mirrors the Android manual multi-instance FPS scenario:
 - x1/x10/x20 and the two busy cases use different local JSON files selected from the manifest.
 - x60 repeats local JSON files and shrinks tiles with a dynamic grid so the stage is filled without overflow.
 - 30% main thread renders x20 animations and runs a 30 ms UI-thread busy-spin block every 100 ms.
-- 70% main thread renders x20 animations and runs a 70 ms UI-thread busy-spin block every 100 ms.
+- 90% main thread renders x20 animations and runs a 90 ms UI-thread busy-spin block every 100 ms.
 - Busy strategy text is shown on the render page for profiler trace alignment.
 - Main-thread FPS sampled with `CADisplayLink`.
 - AnimaX GPU/offscreen FPS sampled through `AnimaXAnimationListener.onFps` after `setFPSEventInterval(1000)`.

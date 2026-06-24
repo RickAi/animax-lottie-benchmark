@@ -18,7 +18,7 @@ Usage: $0 [options]
 Options:
   --engine NAME   animax or lottie. Default: animax.
   --count N       1, 10, 20, or 60. Default: 1.
-  --case ID       count-1, count-10, count-20, count-60, main-thread-30, or main-thread-70.
+  --case ID       count-1, count-10, count-20, count-60, main-thread-30, or main-thread-90.
                   Overrides --count when set.
   --animax-multithread
                   Enable AnimaX multi-thread acceleration. Default: false.
@@ -48,8 +48,8 @@ if [[ "$ENGINE" != "animax" && "$ENGINE" != "lottie" ]]; then
   exit 1
 fi
 
-if [[ -n "$CASE_ID" && "$CASE_ID" != "count-1" && "$CASE_ID" != "count-10" && "$CASE_ID" != "count-20" && "$CASE_ID" != "count-60" && "$CASE_ID" != "main-thread-30" && "$CASE_ID" != "main-thread-70" ]]; then
-  echo "--case must be count-1, count-10, count-20, count-60, main-thread-30, or main-thread-70" >&2
+if [[ -n "$CASE_ID" && "$CASE_ID" != "count-1" && "$CASE_ID" != "count-10" && "$CASE_ID" != "count-20" && "$CASE_ID" != "count-60" && "$CASE_ID" != "main-thread-30" && "$CASE_ID" != "main-thread-90" ]]; then
+  echo "--case must be count-1, count-10, count-20, count-60, main-thread-30, or main-thread-90" >&2
   exit 1
 fi
 
