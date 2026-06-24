@@ -26,14 +26,17 @@ Memory is measured from host-side tooling, not in the app.
 
 The iOS app mirrors the Android manual multi-instance FPS scenario:
 
-- x1, x5, x10, x20, x40, and x60 render-count buttons.
+- 30% main thread, 70% main thread, x1, x10, x20, and x60 buttons.
 - One selected engine at a time: AnimaX or Lottie.
 - An AnimaX-only multi-thread checkbox that maps to `AnimaXContext.enableMultiThreadAccelerate`.
 - An AnimaX-only image mode checkbox that creates `AnimaXImageView` instead of `AnimaXView`.
 - Local-only animation assets loaded from the app bundle.
 - Autoplay and loop enabled for every instance.
-- x1/x5/x10/x20 use different local JSON files selected from the manifest.
-- x40/x60 repeat local JSON files and shrink tiles with dynamic grids so the stage is filled without overflow.
+- x1/x10/x20 and the two busy cases use different local JSON files selected from the manifest.
+- x60 repeats local JSON files and shrinks tiles with a dynamic grid so the stage is filled without overflow.
+- 30% main thread renders x20 animations and runs a 30 ms UI-thread busy-spin block every 100 ms.
+- 70% main thread renders x20 animations and runs a 70 ms UI-thread busy-spin block every 100 ms.
+- Busy strategy text is shown on the render page for profiler trace alignment.
 - Main-thread FPS sampled with `CADisplayLink`.
 - AnimaX GPU/offscreen FPS sampled through `AnimaXAnimationListener.onFps` after `setFPSEventInterval(1000)`.
 

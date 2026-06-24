@@ -31,13 +31,69 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     let tileHeight: CGFloat
   }
 
-  private static let counts = [1, 5, 10, 20, 40, 60]
+  fileprivate struct MainThreadBusyStrategy {
+    let intervalMs: Int
+    let blockMs: Int
+
+    var displayDescription: String {
+      let dutyCycle = Int(round(Double(blockMs) * 100.0 / Double(intervalMs)))
+      return "busy-spin block \(blockMs) ms every \(intervalMs) ms on UI thread (~\(dutyCycle)% duty)"
+    }
+  }
+
+  private struct BenchmarkCase {
+    let caseId: String
+    let buttonLabel: String
+    let titleLabel: String
+    let animationCount: Int
+    let mainThreadBusyStrategy: MainThreadBusyStrategy?
+
+    static func renderCount(_ caseId: String, _ label: String, _ animationCount: Int) -> BenchmarkCase {
+      BenchmarkCase(
+        caseId: caseId,
+        buttonLabel: label,
+        titleLabel: label,
+        animationCount: animationCount,
+        mainThreadBusyStrategy: nil
+      )
+    }
+
+    static func mainThreadBusy(
+      _ caseId: String,
+      _ label: String,
+      _ animationCount: Int,
+      _ intervalMs: Int,
+      _ blockMs: Int
+    ) -> BenchmarkCase {
+      BenchmarkCase(
+        caseId: caseId,
+        buttonLabel: label,
+        titleLabel: label,
+        animationCount: animationCount,
+        mainThreadBusyStrategy: MainThreadBusyStrategy(intervalMs: intervalMs, blockMs: blockMs)
+      )
+    }
+
+    var hasMainThreadBusyLoad: Bool {
+      mainThreadBusyStrategy != nil
+    }
+  }
+
+  private static let benchmarkCases = [
+    BenchmarkCase.mainThreadBusy("main-thread-30", "30% main thread", 20, 100, 30),
+    BenchmarkCase.mainThreadBusy("main-thread-70", "70% main thread", 20, 100, 70),
+    BenchmarkCase.renderCount("count-1", "x1", 1),
+    BenchmarkCase.renderCount("count-10", "x10", 10),
+    BenchmarkCase.renderCount("count-20", "x20", 20),
+    BenchmarkCase.renderCount("count-60", "x60", 60)
+  ]
   private static let maxColumns = 4
   private static let maxRows = 5
   private static let minUniqueCases = maxColumns * maxRows
   private static let animaxFpsIntervalMs = 1000
 
   private let mainThreadFpsMonitor = MainThreadFpsMonitor()
+  private let mainThreadBusySimulator = MainThreadBusySimulator()
   private let stage = UIView()
 
   private var caseSpecs: [CaseSpec] = []
@@ -53,8 +109,10 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
 
   private var selectedEngine: Engine = .animax
   private var launchCount = 1
+  private var launchCaseId: String?
   private var showingScene = false
   private var currentSceneEngine: Engine = .animax
+  private var currentBenchmarkCase = BenchmarkViewController.benchmarkCases[0]
   private var currentSceneCount = 1
   private var animaxMultiThreadEnabled = false
   private var animaxImageModeEnabled = false
@@ -72,7 +130,7 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     showHome()
 
     if ProcessInfo.processInfo.arguments.contains("--autorun") {
-      showScene(engine: selectedEngine, count: launchCount)
+      showScene(engine: selectedEngine, benchmarkCase: benchmarkCaseForLaunch())
     }
   }
 
@@ -91,7 +149,8 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
       return
     }
     if needsStagePopulation || size != lastStageSize {
-      populateStage(engine: currentSceneEngine, count: currentSceneCount)
+      populateStage(engine: currentSceneEngine, count: currentBenchmarkCase.animationCount)
+      mainThreadBusySimulator.start(currentBenchmarkCase.mainThreadBusyStrategy)
       needsStagePopulation = false
       lastStageSize = size
     }
@@ -109,6 +168,10 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
       } else if argument.hasPrefix("--count=") {
         let value = argument.replacingOccurrences(of: "--count=", with: "")
         launchCount = normalizeCount(Int(value) ?? launchCount)
+      } else if argument.hasPrefix("--case=") {
+        launchCaseId = argument.replacingOccurrences(of: "--case=", with: "")
+      } else if argument.hasPrefix("--caseId=") {
+        launchCaseId = argument.replacingOccurrences(of: "--caseId=", with: "")
       } else if argument == "--animax-multithread"
           || argument == "--animax-multithread=true" {
         animaxMultiThreadEnabled = true
@@ -172,24 +235,26 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     buttonGrid.distribution = .fillEqually
     stack.addArrangedSubview(buttonGrid)
 
-    for rowIndex in stride(from: 0, to: Self.counts.count, by: 2) {
+    for rowIndex in stride(from: 0, to: Self.benchmarkCases.count, by: 2) {
       let row = UIStackView()
       row.axis = .horizontal
       row.spacing = 12
       row.distribution = .fillEqually
       buttonGrid.addArrangedSubview(row)
 
-      for index in rowIndex..<min(rowIndex + 2, Self.counts.count) {
-        let count = Self.counts[index]
+      for index in rowIndex..<min(rowIndex + 2, Self.benchmarkCases.count) {
+        let benchmarkCase = Self.benchmarkCases[index]
         let button = UIButton(type: .system)
-        button.setTitle("x\(count)", for: .normal)
+        button.setTitle(benchmarkCase.buttonLabel, for: .normal)
         button.titleLabel?.font = .systemFont(ofSize: 20, weight: .regular)
+        button.titleLabel?.adjustsFontSizeToFitWidth = true
+        button.titleLabel?.minimumScaleFactor = 0.72
         button.setTitleColor(UIColor(white: 0.12, alpha: 1.0), for: .normal)
         button.backgroundColor = UIColor(white: 0.84, alpha: 1.0)
         button.layer.cornerRadius = 4
         button.isEnabled = !caseSpecs.isEmpty
-        button.tag = count
-        button.addTarget(self, action: #selector(countTapped(_:)), for: .touchUpInside)
+        button.tag = index
+        button.addTarget(self, action: #selector(caseTapped(_:)), for: .touchUpInside)
         row.addArrangedSubview(button)
       }
     }
@@ -204,7 +269,7 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     updateHomeControls()
   }
 
-  private func showScene(engine: Engine, count: Int) {
+  private func showScene(engine: Engine, benchmarkCase: BenchmarkCase) {
     guard !caseSpecs.isEmpty else {
       return
     }
@@ -213,7 +278,8 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     showingScene = true
     selectedEngine = engine
     currentSceneEngine = engine
-    currentSceneCount = normalizeCount(count)
+    currentBenchmarkCase = benchmarkCase
+    currentSceneCount = benchmarkCase.animationCount
     mainThreadFps = 0.0
     animaxGpuFps = 0.0
     animaxGpuFpsValues.removeAll()
@@ -244,9 +310,11 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     header.addSubview(backButton)
 
     let titleLabel = UILabel()
-    titleLabel.text = "\(engine.title) x\(currentSceneCount)"
+    titleLabel.text = "\(engine.title) \(benchmarkCase.titleLabel)"
     titleLabel.textColor = .white
     titleLabel.font = .systemFont(ofSize: 24, weight: .regular)
+    titleLabel.adjustsFontSizeToFitWidth = true
+    titleLabel.minimumScaleFactor = 0.70
     titleLabel.translatesAutoresizingMaskIntoConstraints = false
     header.addSubview(titleLabel)
 
@@ -268,7 +336,9 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     fpsLabel.translatesAutoresizingMaskIntoConstraints = false
     self.fpsLabel = fpsLabel
     stack.addArrangedSubview(fpsLabel)
-    fpsLabel.heightAnchor.constraint(equalToConstant: 136).isActive = true
+    fpsLabel.heightAnchor.constraint(
+      equalToConstant: benchmarkCase.hasMainThreadBusyLoad ? 188 : 156
+    ).isActive = true
 
     stage.backgroundColor = UIColor(white: 0.96, alpha: 1.0)
     stage.clipsToBounds = true
@@ -392,6 +462,7 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
   }
 
   private func releaseScene() {
+    mainThreadBusySimulator.stop()
     mainThreadFpsMonitor.stop()
     releaseAnimationViews()
     stage.subviews.forEach { $0.removeFromSuperview() }
@@ -419,20 +490,30 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     }
     let text: String
     if currentSceneEngine == .animax {
-      text = """
-      Engine: AnimaX  Count: x\(currentSceneCount)
-      Multi thread: \(animaxMultiThreadEnabled ? "enabled" : "disabled")
-      Image mode: \(animaxImageModeEnabled ? "enabled" : "disabled")
-      Assets: \(assetSummary(for: currentSceneCount))
-      Main thread FPS: \(formatFps(mainThreadFps))
-      AnimaX GPU FPS: \(formatFps(animaxGpuFps))
-      """
+      var lines = [
+        "Engine: AnimaX  Case: \(currentBenchmarkCase.titleLabel)",
+        "Animations: x\(currentSceneCount)"
+      ]
+      if let strategy = currentBenchmarkCase.mainThreadBusyStrategy {
+        lines.append("Main-thread load: \(strategy.displayDescription)")
+      }
+      lines.append("Multi thread: \(animaxMultiThreadEnabled ? "enabled" : "disabled")")
+      lines.append("Image mode: \(animaxImageModeEnabled ? "enabled" : "disabled")")
+      lines.append("Assets: \(assetSummary(for: currentSceneCount))")
+      lines.append("Main thread FPS: \(formatFps(mainThreadFps))")
+      lines.append("AnimaX GPU FPS: \(formatFps(animaxGpuFps))")
+      text = lines.joined(separator: "\n")
     } else {
-      text = """
-      Engine: Lottie  Count: x\(currentSceneCount)
-      Assets: \(assetSummary(for: currentSceneCount))
-      Main thread FPS: \(formatFps(mainThreadFps))
-      """
+      var lines = [
+        "Engine: Lottie  Case: \(currentBenchmarkCase.titleLabel)",
+        "Animations: x\(currentSceneCount)"
+      ]
+      if let strategy = currentBenchmarkCase.mainThreadBusyStrategy {
+        lines.append("Main-thread load: \(strategy.displayDescription)")
+      }
+      lines.append("Assets: \(assetSummary(for: currentSceneCount))")
+      lines.append("Main thread FPS: \(formatFps(mainThreadFps))")
+      text = lines.joined(separator: "\n")
     }
     fpsLabel.text = text
   }
@@ -555,7 +636,24 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
   }
 
   private func normalizeCount(_ count: Int) -> Int {
-    Self.counts.contains(count) ? count : 1
+    benchmarkCaseForCount(count).animationCount
+  }
+
+  private func benchmarkCaseForLaunch() -> BenchmarkCase {
+    if let launchCaseId, let benchmarkCase = benchmarkCaseById(launchCaseId) {
+      return benchmarkCase
+    }
+    return benchmarkCaseForCount(launchCount)
+  }
+
+  private func benchmarkCaseById(_ caseId: String) -> BenchmarkCase? {
+    Self.benchmarkCases.first { $0.caseId == caseId }
+  }
+
+  private func benchmarkCaseForCount(_ count: Int) -> BenchmarkCase {
+    Self.benchmarkCases.first {
+      !$0.hasMainThreadBusyLoad && $0.animationCount == count
+    } ?? Self.benchmarkCases.first { !$0.hasMainThreadBusyLoad } ?? Self.benchmarkCases[0]
   }
 
   private func averagePositive(_ values: [Double]) -> Double {
@@ -610,8 +708,11 @@ final class BenchmarkViewController: UIViewController, AnimaXAnimationListener {
     updateHomeControls()
   }
 
-  @objc private func countTapped(_ sender: UIButton) {
-    showScene(engine: selectedEngine, count: sender.tag)
+  @objc private func caseTapped(_ sender: UIButton) {
+    guard Self.benchmarkCases.indices.contains(sender.tag) else {
+      return
+    }
+    showScene(engine: selectedEngine, benchmarkCase: Self.benchmarkCases[sender.tag])
   }
 
   @objc private func backTapped() {
@@ -656,6 +757,44 @@ private final class MainThreadFpsMonitor {
     onUpdate?(Double(frameCount) / elapsed)
     frameCount = 0
     lastTimestamp = displayLink.timestamp
+  }
+}
+
+private final class MainThreadBusySimulator {
+  private var timer: DispatchSourceTimer?
+  private var spinSink = 0
+
+  func start(_ strategy: BenchmarkViewController.MainThreadBusyStrategy?) {
+    stop()
+    guard let strategy, strategy.intervalMs > 0, strategy.blockMs > 0 else {
+      return
+    }
+
+    let timer = DispatchSource.makeTimerSource(queue: .main)
+    timer.schedule(
+      deadline: .now() + .milliseconds(strategy.intervalMs),
+      repeating: .milliseconds(strategy.intervalMs),
+      leeway: .milliseconds(0)
+    )
+    timer.setEventHandler { [weak self] in
+      self?.blockMainThread(for: strategy.blockMs)
+    }
+    self.timer = timer
+    timer.resume()
+  }
+
+  func stop() {
+    timer?.cancel()
+    timer = nil
+  }
+
+  private func blockMainThread(for blockMs: Int) {
+    let deadline = ProcessInfo.processInfo.systemUptime + Double(blockMs) / 1000.0
+    var localSink = spinSink
+    while ProcessInfo.processInfo.systemUptime < deadline {
+      localSink &+= Int(ProcessInfo.processInfo.systemUptime * 1_000_000)
+    }
+    spinSink = localSink
   }
 }
 

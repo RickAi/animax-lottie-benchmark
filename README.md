@@ -13,14 +13,13 @@ The repository is intentionally client-only:
 
 The checked-in Android and iOS apps focus on steady-state multi-instance rendering:
 
-- Android shows 30% main thread, 70% main thread, x1, x10, x20, and x60 buttons.
-- The Android 30% main thread case renders x20 animations while running a 30 ms UI-thread busy-spin block every 100 ms. The 70% main thread case renders x20 animations while running a 70 ms UI-thread busy-spin block every 100 ms. The active strategy is shown on the render page.
-- iOS shows x1, x5, x10, x20, x40, and x60 render-count buttons.
+- Android and iOS show 30% main thread, 70% main thread, x1, x10, x20, and x60 buttons.
+- The 30% main thread case renders x20 animations while running a 30 ms UI-thread busy-spin block every 100 ms. The 70% main thread case renders x20 animations while running a 70 ms UI-thread busy-spin block every 100 ms. The active strategy is shown on the render page.
 - Let the user choose AnimaX or Lottie with checkboxes.
 - Show AnimaX-only "Enable multi thread" and "Enable image mode" checkboxes. Multi-thread maps to `AnimaXContext.Builder(...).multiThreadAccelerate(...)` on Android and `AnimaXContext.enableMultiThreadAccelerate` on iOS. Image mode creates `AnimaXImageView` instead of `AnimaXView`.
 - Open a dedicated render page where all animations autoplay and loop.
-- Keep x1/x10/x20 and Android busy cases on the fixed x20-derived grid, and shrink high-count tiles with dynamic grids that fill the stage.
-- Use different local Lottie JSON files for x1/x10/x20 and Android busy cases, then repeat local files for high-count pressure cases.
+- Keep x1/x10/x20 and main-thread busy cases on the fixed x20-derived grid, and shrink high-count tiles with dynamic grids that fill the stage.
+- Use different local Lottie JSON files for x1/x10/x20 and main-thread busy cases, then repeat local files for high-count pressure cases.
 - Show main-thread FPS for both engines.
 - Show AnimaX GPU/offscreen FPS from `AnimationListenerAdapter.onFPS` on Android and `AnimaXAnimationListener.onFps` on iOS after setting a 1000 ms FPS event interval.
 
@@ -30,7 +29,7 @@ Collect memory, CPU, frame interval, and latency metrics from PC-side tooling su
 
 ## Cases
 
-The default case manifest is [assets/manifest.json](assets/manifest.json). It currently uses 20 Apache-2.0 sample files from the official Airbnb Lottie Android/iOS repositories. The Android x1/x10/x20 and main-thread busy scenes use unique files from this manifest. The Android x60 scene repeats the same local files to build a higher instance-count pressure case.
+The default case manifest is [assets/manifest.json](assets/manifest.json). It currently uses 20 Apache-2.0 sample files from the official Airbnb Lottie Android/iOS repositories. The x1/x10/x20 and main-thread busy scenes use unique files from this manifest. The x60 scene repeats the same local files to build a higher instance-count pressure case.
 
 - `hamburger_arrow`: small path morph.
 - `lottie_logo_2`: complex logo, many layers.
@@ -90,9 +89,10 @@ Run manually from Xcode, or pass launch arguments:
 
 ```text
 --autorun --engine=animax --count=20 --animax-multithread --animax-image-mode
+--autorun --engine=animax --case=main-thread-70 --animax-multithread --animax-image-mode
 ```
 
-Use `--engine=lottie` and any supported `--count=1|5|10|20|40|60` for Lottie scenes.
+Use `--engine=lottie` and any supported `--count=1|10|20|60` or `--case=main-thread-30|main-thread-70` for Lottie scenes.
 
 ## Results
 
