@@ -76,7 +76,7 @@ The iOS app uses the published `AnimaX` CocoaPod with the same subspec shape as 
 ```sh
 cd ios/AnimaXBenchmark
 ./bundle_install.sh
-xcodebuild -workspace AnimaXExample.xcworkspace -scheme AnimaXExample -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build
+xcodebuild -workspace AnimaXLottieBenchmark.xcworkspace -scheme AnimaXLottieBenchmark -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build
 ```
 
 The default `lottie-ios` version is `4.6.1`, matching the current GitHub/CocoaPods release metadata checked while scaffolding this repo.

@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-# Minimal build script for AnimaXExample (compile-only).
+# Minimal build script for AnimaXLottieBenchmark (compile-only).
 # Purpose: verify the project compiles without signing or IPA export.
 # Notes:
 # - No archive/export; uses non-signing build to iphoneos SDK.
@@ -16,8 +16,8 @@ cd "${SCRIPT_DIR}"
 
 # Configurable parameters (override with env vars if needed).
 : "${CONFIGURATION:=Debug}"
-: "${SCHEME:=AnimaXExample}"
-: "${WORKSPACE:=AnimaXExample.xcworkspace}"
+: "${SCHEME:=AnimaXLottieBenchmark}"
+: "${WORKSPACE:=AnimaXLottieBenchmark.xcworkspace}"
 : "${ARCH:=arm64}"
 : "${BUILD_DIR:=build}"
 

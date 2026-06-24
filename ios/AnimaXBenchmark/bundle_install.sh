@@ -9,7 +9,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 repo_root=$(cd "$script_dir/../.." && pwd -P)
 bundle_path="$repo_root/.bundle/vendor"
 command=(pod install --verbose --repo-update)
-project_name="AnimaXExample.xcodeproj"
+project_name="AnimaXLottieBenchmark.xcodeproj"
 
 export COCOAPODS_CONVERT_GIT_TO_HTTP=false
 export LANG=en_US.UTF-8
