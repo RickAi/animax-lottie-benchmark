@@ -2,43 +2,20 @@
 
 This repo separates case orchestration from performance measurement.
 
-## Android In-App FPS Runner
+## In-App FPS Runner
 
-The Android app runs a manual multi-instance FPS scenario:
+The Android and iOS apps run the same manual multi-instance FPS scenarios:
 
-- 30% main thread, 90% main thread, x1, x10, x20, and x60 buttons.
+- x8, x12, x16, and x20 buttons.
 - One selected engine at a time: AnimaX or Lottie.
-- An AnimaX-only multi-thread checkbox that maps to `AnimaXContext.Builder(...).multiThreadAccelerate(...)`.
-- An AnimaX-only image mode checkbox that creates `AnimaXImageView` instead of `AnimaXView`.
-- Local-only animation assets loaded from the APK.
+- An AnimaX-only multi-thread checkbox that remains visible but disabled in Lottie mode and maps to `AnimaXContext.Builder(...).multiThreadAccelerate(...)` on Android and `AnimaXContext.enableMultiThreadAccelerate` on iOS.
+- An AnimaX-only image mode checkbox that remains visible but disabled in Lottie mode and creates `AnimaXImageView` instead of `AnimaXView`.
+- On Android, a Lottie-only async update checkbox that remains visible but disabled in AnimaX mode and maps to `LottieAnimationView.setAsyncUpdates(...)`.
+- Local-only animation assets loaded from the app package or bundle.
 - Autoplay and loop enabled for every instance.
-- x1/x10/x20 and the two busy cases use different local JSON files selected from the manifest.
-- x60 repeats local JSON files and shrinks tiles with a dynamic grid so the stage is filled without overflow.
-- 30% main thread renders x20 animations and runs a 30 ms UI-thread busy-spin block every 100 ms.
-- 90% main thread renders x20 animations and runs a 90 ms UI-thread busy-spin block every 100 ms.
-- Busy strategy text is shown on the render page for profiler trace alignment.
-- Main-thread FPS sampled with `Choreographer`.
-- AnimaX GPU/offscreen FPS sampled through `AnimationListenerAdapter.onFPS` after `setFpsEventInterval(1000)`.
-
-Memory is measured from host-side tooling, not in the app.
-
-## iOS In-App FPS Runner
-
-The iOS app mirrors the Android manual multi-instance FPS scenario:
-
-- 30% main thread, 90% main thread, x1, x10, x20, and x60 buttons.
-- One selected engine at a time: AnimaX or Lottie.
-- An AnimaX-only multi-thread checkbox that maps to `AnimaXContext.enableMultiThreadAccelerate`.
-- An AnimaX-only image mode checkbox that creates `AnimaXImageView` instead of `AnimaXView`.
-- Local-only animation assets loaded from the app bundle.
-- Autoplay and loop enabled for every instance.
-- x1/x10/x20 and the two busy cases use different local JSON files selected from the manifest.
-- x60 repeats local JSON files and shrinks tiles with a dynamic grid so the stage is filled without overflow.
-- 30% main thread renders x20 animations and runs a 30 ms UI-thread busy-spin block every 100 ms.
-- 90% main thread renders x20 animations and runs a 90 ms UI-thread busy-spin block every 100 ms.
-- Busy strategy text is shown on the render page for profiler trace alignment.
-- Main-thread FPS sampled with `CADisplayLink`.
-- AnimaX GPU/offscreen FPS sampled through `AnimaXAnimationListener.onFps` after `setFPSEventInterval(1000)`.
+- Every scene repeats `lotties/heavy_matte_mask.json` for each tile.
+- Main-thread FPS sampled with `Choreographer` on Android and `CADisplayLink` on iOS.
+- AnimaX GPU/offscreen FPS sampled through `AnimationListenerAdapter.onFPS` on Android and `AnimaXAnimationListener.onFps` on iOS after setting a 1000 ms FPS event interval.
 
 The apps only show live FPS in-app. Frame intervals, jank, dropped frames, CPU time, memory, heap, resident size, and engine memory should come from platform tooling on the host machine.
 
@@ -73,9 +50,6 @@ Pair each profiler capture with enough metadata to make comparisons reproducible
 
 ## Case Selection
 
-The default manifest covers small/complex/icon/character/matte/gradient/image/text/effect/large-canvas cases. Future additions should come from license-clear corpora such as:
+The default manifest intentionally contains one generated stress case:
 
-- LottieFiles `test-files/data` CC0 corpus.
-- Official Airbnb Lottie Android snapshot tests.
-- Official Airbnb Lottie iOS tests outside the `Tests/Samples/LottieFiles` subdirectory unless the Lottie Simple License is acceptable for that specific asset.
-- Lottie Animation Community tests.
+- `heavy_matte_mask`: a shape-only `ANIMAX` wordmark animation with 10 layer masks and 10 track matte pairs.

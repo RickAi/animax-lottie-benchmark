@@ -4,9 +4,6 @@ import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.graphics.Canvas;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.Choreographer;
 import android.view.View;
@@ -18,6 +15,7 @@ import android.widget.GridLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import com.airbnb.lottie.AsyncUpdates;
 import com.airbnb.lottie.LottieAnimationView;
 import com.airbnb.lottie.RenderMode;
 import com.lynx.animax.ability.NativeAbility;
@@ -46,21 +44,19 @@ public final class BenchmarkActivity extends Activity {
   private static final String ENGINE_ANIMAX = "animax";
   private static final String ENGINE_LOTTIE = "lottie";
   private static final String DEFAULT_MANIFEST = "manifest.json";
+  private static final String HEAVY_MATTE_MASK_ASSET_PATH = "lotties/heavy_matte_mask.json";
   private static final int MAX_COLUMNS = 4;
   private static final int MAX_ROWS = 5;
-  private static final int MIN_UNIQUE_CASES = MAX_COLUMNS * MAX_ROWS;
+  private static final int FIXED_GRID_CAPACITY = MAX_COLUMNS * MAX_ROWS;
   private static final long ANIMAX_FPS_INTERVAL_MS = 1000L;
   private static final BenchmarkCase[] BENCHMARK_CASES = {
-      BenchmarkCase.mainThreadBusy("main-thread-30", "30% main thread", 20, 100, 30),
-      BenchmarkCase.mainThreadBusy("main-thread-90", "90% main thread", 20, 100, 90),
-      BenchmarkCase.renderCount("count-1", "x1", 1),
-      BenchmarkCase.renderCount("count-10", "x10", 10),
-      BenchmarkCase.renderCount("count-20", "x20", 20),
-      BenchmarkCase.renderCount("count-60", "x60", 60)
+      BenchmarkCase.renderCount("count-8", "x8", 8),
+      BenchmarkCase.renderCount("count-12", "x12", 12),
+      BenchmarkCase.renderCount("count-16", "x16", 16),
+      BenchmarkCase.renderCount("count-20", "x20", 20)
   };
 
   private final MainThreadFpsMonitor mainThreadFpsMonitor = new MainThreadFpsMonitor();
-  private final MainThreadBusySimulator mainThreadBusySimulator = new MainThreadBusySimulator();
   private final List<IAnimaXView> animaxViews = new ArrayList<>();
   private final List<AnimationListenerAdapter> animaxListeners = new ArrayList<>();
   private final List<LottieAnimationView> lottieViews = new ArrayList<>();
@@ -71,6 +67,7 @@ public final class BenchmarkActivity extends Activity {
   private CheckBox lottieCheckBox;
   private CheckBox animaxMultiThreadCheckBox;
   private CheckBox animaxImageModeCheckBox;
+  private CheckBox lottieAsyncUpdatesCheckBox;
   private TextView fpsView;
   private FrameLayout stage;
   private String selectedEngine = ENGINE_ANIMAX;
@@ -80,6 +77,7 @@ public final class BenchmarkActivity extends Activity {
   private boolean showingScene;
   private boolean animaxMultiThreadEnabled;
   private boolean animaxImageModeEnabled;
+  private boolean lottieAsyncUpdatesEnabled;
   private float mainThreadFps;
   private float animaxGpuFps;
 
@@ -89,17 +87,18 @@ public final class BenchmarkActivity extends Activity {
     try {
       loadCaseAssets();
       assetStatus = "Loaded " + caseAssetPaths.size()
-          + " local assets. High-count scenes repeat assets.";
+          + " local asset. x8/x12/x16/x20 use " + HEAVY_MATTE_MASK_ASSET_PATH + ".";
     } catch (Exception e) {
       assetStatus = "Failed to load local assets: " + e.getMessage();
     }
     animaxMultiThreadEnabled = getIntent().getBooleanExtra("animaxMultiThread", false);
     animaxImageModeEnabled = getIntent().getBooleanExtra("animaxImageMode", false);
+    lottieAsyncUpdatesEnabled = getIntent().getBooleanExtra("lottieAsyncUpdates", false);
     showHome();
     if (getIntent().getBooleanExtra("autorun", false)) {
       String engine = getIntent().getStringExtra("engine");
       String caseId = getIntent().getStringExtra("caseId");
-      int count = getIntent().getIntExtra("count", 1);
+      int count = getIntent().getIntExtra("count", BENCHMARK_CASES[0].animationCount);
       if (ENGINE_LOTTIE.equalsIgnoreCase(engine)) {
         selectedEngine = ENGINE_LOTTIE;
       }
@@ -158,13 +157,28 @@ public final class BenchmarkActivity extends Activity {
     animaxCheckBox.setOnClickListener(v -> selectEngine(ENGINE_ANIMAX));
     lottieCheckBox.setOnClickListener(v -> selectEngine(ENGINE_LOTTIE));
 
+    LinearLayout optionRow = new LinearLayout(this);
+    optionRow.setOrientation(LinearLayout.HORIZONTAL);
+    root.addView(optionRow, new LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(96)));
+
+    LinearLayout animaxOptionColumn = new LinearLayout(this);
+    animaxOptionColumn.setOrientation(LinearLayout.VERTICAL);
+    optionRow.addView(animaxOptionColumn, new LinearLayout.LayoutParams(
+        0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+
+    LinearLayout lottieOptionColumn = new LinearLayout(this);
+    lottieOptionColumn.setOrientation(LinearLayout.VERTICAL);
+    optionRow.addView(lottieOptionColumn, new LinearLayout.LayoutParams(
+        0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+
     animaxMultiThreadCheckBox = new CheckBox(this);
     animaxMultiThreadCheckBox.setText("Enable multi thread");
     animaxMultiThreadCheckBox.setTextSize(16);
     animaxMultiThreadCheckBox.setChecked(animaxMultiThreadEnabled);
     animaxMultiThreadCheckBox.setOnClickListener(v ->
         animaxMultiThreadEnabled = animaxMultiThreadCheckBox.isChecked());
-    root.addView(animaxMultiThreadCheckBox, new LinearLayout.LayoutParams(
+    animaxOptionColumn.addView(animaxMultiThreadCheckBox, new LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
 
     animaxImageModeCheckBox = new CheckBox(this);
@@ -173,9 +187,20 @@ public final class BenchmarkActivity extends Activity {
     animaxImageModeCheckBox.setChecked(animaxImageModeEnabled);
     animaxImageModeCheckBox.setOnClickListener(v ->
         animaxImageModeEnabled = animaxImageModeCheckBox.isChecked());
-    root.addView(animaxImageModeCheckBox, new LinearLayout.LayoutParams(
+    animaxOptionColumn.addView(animaxImageModeCheckBox, new LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
-    updateAnimaxOptionVisibility();
+
+    lottieAsyncUpdatesCheckBox = new CheckBox(this);
+    lottieAsyncUpdatesCheckBox.setText("Enable async update");
+    lottieAsyncUpdatesCheckBox.setTextSize(16);
+    lottieAsyncUpdatesCheckBox.setChecked(lottieAsyncUpdatesEnabled);
+    lottieAsyncUpdatesCheckBox.setOnClickListener(v ->
+        lottieAsyncUpdatesEnabled = lottieAsyncUpdatesCheckBox.isChecked());
+    lottieOptionColumn.addView(lottieAsyncUpdatesCheckBox, new LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+    lottieOptionColumn.addView(new View(this), new LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+    updateEngineOptionStates();
 
     LinearLayout buttonGrid = new LinearLayout(this);
     buttonGrid.setOrientation(LinearLayout.VERTICAL);
@@ -217,7 +242,7 @@ public final class BenchmarkActivity extends Activity {
     if (lottieCheckBox != null) {
       lottieCheckBox.setChecked(ENGINE_LOTTIE.equals(engine));
     }
-    updateAnimaxOptionVisibility();
+    updateEngineOptionStates();
   }
 
   private void showScene(String engine, BenchmarkCase benchmarkCase) {
@@ -266,8 +291,7 @@ public final class BenchmarkActivity extends Activity {
     fpsView.setPadding(dp(16), dp(8), dp(16), dp(8));
     fpsView.setBackgroundColor(0xff222222);
     root.addView(fpsView, new LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        benchmarkCase.hasMainThreadBusyLoad() ? dp(188) : dp(156)));
+        ViewGroup.LayoutParams.MATCH_PARENT, dp(156)));
 
     stage = new FrameLayout(this);
     stage.setBackgroundColor(0xfff4f4f4);
@@ -287,7 +311,6 @@ public final class BenchmarkActivity extends Activity {
         return;
       }
       populateStage(engine, benchmarkCase.animationCount);
-      mainThreadBusySimulator.start(benchmarkCase.mainThreadBusyStrategy);
     });
   }
 
@@ -308,7 +331,7 @@ public final class BenchmarkActivity extends Activity {
     stage.addView(grid, gridParams);
 
     for (int i = 0; i < count; i++) {
-      String assetPath = caseAssetPaths.get(i % caseAssetPaths.size());
+      String assetPath = assetPathForIndex(i);
       View animationView = ENGINE_ANIMAX.equals(engine)
           ? createAnimaxView(i, assetPath)
           : createLottieView(assetPath);
@@ -360,6 +383,7 @@ public final class BenchmarkActivity extends Activity {
   private View createLottieView(String assetPath) {
     LottieAnimationView view = new LottieAnimationView(this);
     view.setCacheComposition(false);
+    view.setAsyncUpdates(lottieAsyncUpdatesEnabled ? AsyncUpdates.ENABLED : AsyncUpdates.DISABLED);
     view.setRenderMode(RenderMode.AUTOMATIC);
     view.setScaleType(ImageView.ScaleType.FIT_CENTER);
     view.setRepeatCount(ValueAnimator.INFINITE);
@@ -379,10 +403,6 @@ public final class BenchmarkActivity extends Activity {
     if (ENGINE_ANIMAX.equals(engine)) {
       String text = "Engine: AnimaX  Case: " + benchmarkCase.titleLabel
           + "\nAnimations: x" + count;
-      if (benchmarkCase.hasMainThreadBusyLoad()) {
-        text += "\nMain-thread load: "
-            + benchmarkCase.mainThreadBusyStrategy.displayDescription();
-      }
       text += "\nMulti thread: " + (animaxMultiThreadEnabled ? "enabled" : "disabled")
           + "\nImage mode: " + (animaxImageModeEnabled ? "enabled" : "disabled")
           + "\nAssets: " + assetSummary(count)
@@ -392,18 +412,14 @@ public final class BenchmarkActivity extends Activity {
     } else {
       String text = "Engine: Lottie  Case: " + benchmarkCase.titleLabel
           + "\nAnimations: x" + count;
-      if (benchmarkCase.hasMainThreadBusyLoad()) {
-        text += "\nMain-thread load: "
-            + benchmarkCase.mainThreadBusyStrategy.displayDescription();
-      }
-      text += "\nAssets: " + assetSummary(count)
+      text += "\nAsync update: " + (lottieAsyncUpdatesEnabled ? "enabled" : "disabled")
+          + "\nAssets: " + assetSummary(count)
           + "\nMain thread FPS: " + mainFps;
       fpsView.setText(text);
     }
   }
 
   private void releaseScene() {
-    mainThreadBusySimulator.stop();
     mainThreadFpsMonitor.stop();
     for (int i = 0; i < animaxViews.size(); i++) {
       IAnimaXView view = animaxViews.get(i);
@@ -438,9 +454,8 @@ public final class BenchmarkActivity extends Activity {
         caseAssetPaths.add(file);
       }
     }
-    if (caseAssetPaths.size() < MIN_UNIQUE_CASES) {
-      throw new IOException("manifest has fewer than " + MIN_UNIQUE_CASES
-          + " unique case files");
+    if (caseAssetPaths.isEmpty()) {
+      throw new IOException("manifest has no case files");
     }
   }
 
@@ -487,27 +502,32 @@ public final class BenchmarkActivity extends Activity {
 
   private BenchmarkCase benchmarkCaseForCount(int count) {
     for (BenchmarkCase benchmarkCase : BENCHMARK_CASES) {
-      if (!benchmarkCase.hasMainThreadBusyLoad() && benchmarkCase.animationCount == count) {
+      if (benchmarkCase.animationCount == count) {
         return benchmarkCase;
       }
     }
     return BENCHMARK_CASES[0];
   }
 
-  private void updateAnimaxOptionVisibility() {
+  private void updateEngineOptionStates() {
     boolean animaxSelected = ENGINE_ANIMAX.equals(selectedEngine);
+    boolean lottieSelected = ENGINE_LOTTIE.equals(selectedEngine);
     if (animaxMultiThreadCheckBox != null) {
-      animaxMultiThreadCheckBox.setVisibility(animaxSelected ? View.VISIBLE : View.GONE);
+      animaxMultiThreadCheckBox.setVisibility(View.VISIBLE);
       animaxMultiThreadCheckBox.setEnabled(animaxSelected);
     }
     if (animaxImageModeCheckBox != null) {
-      animaxImageModeCheckBox.setVisibility(animaxSelected ? View.VISIBLE : View.GONE);
+      animaxImageModeCheckBox.setVisibility(View.VISIBLE);
       animaxImageModeCheckBox.setEnabled(animaxSelected);
+    }
+    if (lottieAsyncUpdatesCheckBox != null) {
+      lottieAsyncUpdatesCheckBox.setVisibility(View.VISIBLE);
+      lottieAsyncUpdatesCheckBox.setEnabled(lottieSelected);
     }
   }
 
   private GridSpec gridSpecFor(int count, int stageWidth, int stageHeight) {
-    if (count <= MIN_UNIQUE_CASES) {
+    if (count <= FIXED_GRID_CAPACITY) {
       int columns = Math.min(MAX_COLUMNS, count);
       int rows = (int) Math.ceil(count / (float) columns);
       int tileSize = Math.max(dp(48), Math.min(
@@ -543,14 +563,14 @@ public final class BenchmarkActivity extends Activity {
   }
 
   private String assetSummary(int count) {
-    int localAssetCount = caseAssetPaths.size();
-    if (localAssetCount == 0) {
+    if (caseAssetPaths.isEmpty()) {
       return "--";
     }
-    if (count <= localAssetCount) {
-      return count + " unique local JSON";
-    }
-    return localAssetCount + " local JSON, repeated to " + count;
+    return caseAssetPaths.get(0) + " repeated to " + count;
+  }
+
+  private String assetPathForIndex(int index) {
+    return caseAssetPaths.get(0);
   }
 
   private static String engineLabel(String engine) {
@@ -603,108 +623,20 @@ public final class BenchmarkActivity extends Activity {
     final String buttonLabel;
     final String titleLabel;
     final int animationCount;
-    final MainThreadBusyStrategy mainThreadBusyStrategy;
 
     private BenchmarkCase(
         String caseId,
         String buttonLabel,
         String titleLabel,
-        int animationCount,
-        MainThreadBusyStrategy mainThreadBusyStrategy) {
+        int animationCount) {
       this.caseId = caseId;
       this.buttonLabel = buttonLabel;
       this.titleLabel = titleLabel;
       this.animationCount = animationCount;
-      this.mainThreadBusyStrategy = mainThreadBusyStrategy;
     }
 
     static BenchmarkCase renderCount(String caseId, String label, int animationCount) {
-      return new BenchmarkCase(caseId, label, label, animationCount, null);
-    }
-
-    static BenchmarkCase mainThreadBusy(
-        String caseId,
-        String label,
-        int animationCount,
-        int intervalMs,
-        int blockMs) {
-      return new BenchmarkCase(
-          caseId,
-          label,
-          label,
-          animationCount,
-          new MainThreadBusyStrategy(intervalMs, blockMs));
-    }
-
-    boolean hasMainThreadBusyLoad() {
-      return mainThreadBusyStrategy != null;
-    }
-  }
-
-  private static final class MainThreadBusyStrategy {
-    final int intervalMs;
-    final int blockMs;
-
-    MainThreadBusyStrategy(int intervalMs, int blockMs) {
-      this.intervalMs = intervalMs;
-      this.blockMs = blockMs;
-    }
-
-    String displayDescription() {
-      int dutyCycle = Math.round(blockMs * 100f / intervalMs);
-      return "busy-spin block " + blockMs + " ms every " + intervalMs
-          + " ms on UI thread (~" + dutyCycle + "% duty)";
-    }
-  }
-
-  private static final class MainThreadBusySimulator {
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable busyTask = new Runnable() {
-      @Override
-      public void run() {
-        if (!running || strategy == null) {
-          return;
-        }
-        blockMainThread(strategy.blockMs);
-        nextRunUptimeMs += strategy.intervalMs;
-        long now = SystemClock.uptimeMillis();
-        if (nextRunUptimeMs <= now) {
-          nextRunUptimeMs = now + strategy.intervalMs;
-        }
-        handler.postAtTime(this, nextRunUptimeMs);
-      }
-    };
-
-    private boolean running;
-    private long nextRunUptimeMs;
-    private long spinSink;
-    private MainThreadBusyStrategy strategy;
-
-    void start(MainThreadBusyStrategy strategy) {
-      stop();
-      if (strategy == null || strategy.intervalMs <= 0 || strategy.blockMs <= 0) {
-        return;
-      }
-      this.strategy = strategy;
-      running = true;
-      nextRunUptimeMs = SystemClock.uptimeMillis() + strategy.intervalMs;
-      handler.postAtTime(busyTask, nextRunUptimeMs);
-    }
-
-    void stop() {
-      running = false;
-      strategy = null;
-      nextRunUptimeMs = 0L;
-      handler.removeCallbacks(busyTask);
-    }
-
-    private void blockMainThread(int blockMs) {
-      long deadlineMs = SystemClock.uptimeMillis() + blockMs;
-      long localSink = spinSink;
-      while (SystemClock.uptimeMillis() < deadlineMs) {
-        localSink += SystemClock.elapsedRealtimeNanos();
-      }
-      spinSink = localSink;
+      return new BenchmarkCase(caseId, label, label, animationCount);
     }
   }
 
