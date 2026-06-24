@@ -4,7 +4,6 @@
 
 #import "SceneDelegate.h"
 #import <UIKit/UIKit.h>
-#import "ViewController.h"
 
 @interface SceneDelegate ()
 
@@ -26,12 +25,10 @@
     self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
 
     Class benchmarkClass = NSClassFromString(@"BenchmarkViewController");
-    UIViewController *rootViewController = nil;
-    if ([benchmarkClass isSubclassOfClass:[UIViewController class]]) {
-      rootViewController = [[benchmarkClass alloc] init];
-    } else {
-      rootViewController = [[ViewController alloc] init];
-    }
+    UIViewController *rootViewController =
+        [benchmarkClass isSubclassOfClass:[UIViewController class]]
+            ? [[benchmarkClass alloc] init]
+            : [[UIViewController alloc] init];
     UINavigationController *navigationController =
         [[UINavigationController alloc] initWithRootViewController:rootViewController];
 
