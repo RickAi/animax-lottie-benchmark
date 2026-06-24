@@ -13,7 +13,7 @@ The repository is intentionally client-only:
 
 The checked-in Android and iOS apps focus on steady-state multi-instance rendering:
 
-- Android shows x1, Busy light, x10, x20, Busy heavy, and x60 buttons.
+- Android shows Busy light, Busy heavy, x1, x10, x20, and x60 buttons.
 - The Android Busy light case renders x20 animations while running a 20 ms UI-thread busy-spin block every 100 ms. The Busy heavy case renders x20 animations while running a 50 ms UI-thread busy-spin block every 100 ms. The active strategy is shown on the render page.
 - iOS shows x1, x5, x10, x20, x40, and x60 render-count buttons.
 - Let the user choose AnimaX or Lottie with checkboxes.

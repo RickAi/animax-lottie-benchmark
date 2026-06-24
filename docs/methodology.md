@@ -6,7 +6,7 @@ This repo separates case orchestration from performance measurement.
 
 The Android app runs a manual multi-instance FPS scenario:
 
-- x1, Busy light, x10, x20, Busy heavy, and x60 buttons.
+- Busy light, Busy heavy, x1, x10, x20, and x60 buttons.
 - One selected engine at a time: AnimaX or Lottie.
 - An AnimaX-only multi-thread checkbox that maps to `AnimaXContext.Builder(...).multiThreadAccelerate(...)`.
 - An AnimaX-only image mode checkbox that creates `AnimaXImageView` instead of `AnimaXView`.
